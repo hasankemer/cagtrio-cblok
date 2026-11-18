@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { initializeApp } from 'firebase/app';
-import { getFirestore, doc, setDoc, onSnapshot } from 'firebase/firestore';
+import { getFirestore, doc, setDoc, onSnapshot, runTransaction } from 'firebase/firestore';
 import { 
   Building2, Users, Wallet, Wrench, Shield, Key, Plus, Trash2, 
   CheckCircle2, AlertCircle, Phone, ArrowUpRight, 
@@ -167,6 +167,47 @@ export default function App() {
     } else {
       localStorage.setItem("cagtrio_c_blok_v2", JSON.stringify(newData));
     }
+  };
+
+  // Aidat ödemesini yalnızca ilgili ayın Firebase alanında değiştirir.
+  // Böylece Şubat ve Mart gibi peş peşe tıklanan aylar birbirinin üzerine yazılmaz.
+  const togglePayment = async (year, aptNo, monthIndex) => {
+    const key = getPaymentKey(year, aptNo, monthIndex);
+    const paymentRef = db ? doc(db, "cagtrio", "c_blok_data") : null;
+
+    if (db && isFirebaseConnected) {
+      try {
+        const nextPaid = await runTransaction(db, async (transaction) => {
+          const snapshot = await transaction.get(paymentRef);
+          if (!snapshot.exists()) {
+            throw new Error("Apartman kayıt belgesi bulunamadı.");
+          }
+          const payments = snapshot.data().payments || {};
+          const value = !Boolean(payments[key]);
+          transaction.update(paymentRef, { [`payments.${key}`]: value });
+          return value;
+        });
+
+        setData((previous) => ({
+          ...previous,
+          payments: { ...(previous.payments || {}), [key]: nextPaid }
+        }));
+      } catch (error) {
+        console.error("Aidat ödeme kaydı güncellenemedi:", error);
+        showNotification("Ödeme kaydedilemedi. İnternet bağlantısını kontrol edin.", true);
+      }
+      return;
+    }
+
+    setData((previous) => {
+      const nextPayments = {
+        ...(previous.payments || {}),
+        [key]: !Boolean(previous.payments?.[key])
+      };
+      const nextData = { ...previous, payments: nextPayments };
+      localStorage.setItem("cagtrio_c_blok_v2", JSON.stringify(nextData));
+      return nextData;
+    });
   };
 
   const showNotification = (msg, isError = false) => {
@@ -479,14 +520,7 @@ export default function App() {
                                     onClick={(e) => {
                                       e.preventDefault();
                                       e.stopPropagation();
-                                      const nextPayments = {
-                                        ...(data.payments || {}),
-                                        [key]: !isPaid
-                                      };
-                                      saveData({
-                                        ...data,
-                                        payments: nextPayments
-                                      });
+                                      togglePayment(selectedYear, apt.no, mIdx);
                                     }}
                                     className={`w-8 h-8 rounded text-xs font-bold ${isPaid ? 'bg-emerald-600 text-white' : 'bg-slate-200'}`}
                                   >
