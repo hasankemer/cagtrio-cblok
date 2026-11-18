@@ -7,7 +7,6 @@ import {
   Sparkles, RefreshCw, LogOut, FileText, Layers, DollarSign, Image as ImageIcon, X
 } from 'lucide-react';
 
-// --- GERÇEK FİREBASE BAĞLANTI AYARLARINIZ ---
 const firebaseConfig = {
   apiKey: "AIzaSyCyjXcizCsT3hQDR2oCDGxbr6f1kA_0Mrc",
   authDomain: "cagtrio-cblok.firebaseapp.com",
@@ -44,15 +43,10 @@ const INITIAL_DATA = {
   ],
   extraPayments: {},
   expenses: [
-    { id: 1, title: "Ocak Ayı Elektrik Faturası", amount: 450, date: "2026-01-15", category: "Elektrik", receiptImage: "" },
-    { id: 2, title: "Su Deposu Temizliği", amount: 1200, date: "2026-01-20", category: "Bakım", receiptImage: "" }
+    { id: 1, title: "Ocak Ayı Elektrik Faturası", amount: 450, date: "2026-01-15", category: "Elektrik", receiptImage: "" }
   ],
-  cleaningLogs: [
-    { id: 1, date: "2026-02-15", person: "Hasan Temizlik Ltd.", note: "Merdiven ve giriş camları silindi" }
-  ],
-  elevatorLogs: [
-    { id: 1, date: "2026-02-10", company: "Asansör Teknik Bakım A.Ş.", note: "Aylık periyodik bakım ve kontrol" }
-  ]
+  cleaningLogs: [],
+  elevatorLogs: []
 };
 
 const MONTHS = [
@@ -141,7 +135,6 @@ export default function App() {
       }
       setLoading(false);
     }, (error) => {
-      console.error("Firebase veri okuma hatası:", error);
       setLoading(false);
     });
 
@@ -153,9 +146,7 @@ export default function App() {
     if (db && isFirebaseConnected) {
       try {
         await setDoc(doc(db, "cagtrio", "c_blok_data"), newData);
-      } catch (e) {
-        console.error("Firebase kayıt hatası:", e);
-      }
+      } catch (e) {}
     } else {
       localStorage.setItem("cagtrio_c_blok_v2", JSON.stringify(newData));
     }
@@ -238,7 +229,7 @@ export default function App() {
     return (
       <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center text-white">
         <RefreshCw className="w-10 h-10 animate-spin text-emerald-400 mb-4" />
-        <p className="text-lg font-medium">Çağ Trio Apartmanı C Blok Sistemi Yükleniyor...</p>
+        <p className="text-lg font-medium">Yükleniyor...</p>
       </div>
     );
   }
@@ -248,22 +239,14 @@ export default function App() {
       {viewingImage && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-2xl w-full p-4 relative shadow-2xl flex flex-col items-center">
-            <button 
-              onClick={() => setViewingImage(null)}
-              className="absolute top-4 right-4 bg-slate-100 hover:bg-slate-200 p-2 rounded-full transition"
-            >
+            <button onClick={() => setViewingImage(null)} className="absolute top-4 right-4 bg-slate-100 p-2 rounded-full">
               <X className="w-5 h-5 text-slate-700" />
             </button>
-            <h3 className="text-base font-bold text-slate-900 mb-3">Harcama Fişi / Belge Görseli</h3>
+            <h3 className="text-base font-bold text-slate-900 mb-3">Fiş / Belge Görseli</h3>
             <div className="max-h-[70vh] overflow-auto w-full flex justify-center bg-slate-50 p-2 rounded-xl border">
               <img src={viewingImage} alt="Fiş Görseli" className="max-w-full h-auto object-contain rounded-lg" />
             </div>
-            <button 
-              onClick={() => setViewingImage(null)}
-              className="mt-4 bg-slate-900 text-white px-6 py-2 rounded-xl text-sm font-semibold"
-            >
-              Kapat
-            </button>
+            <button onClick={() => setViewingImage(null)} className="mt-4 bg-slate-900 text-white px-6 py-2 rounded-xl text-sm font-semibold">Kapat</button>
           </div>
         </div>
       )}
@@ -271,29 +254,17 @@ export default function App() {
       <header className="bg-slate-900 text-white shadow-md">
         <div className="max-w-7xl mx-auto px-4 py-4 flex flex-col sm:flex-row justify-between items-center gap-4">
           <div className="flex items-center gap-3">
-            <div className="bg-emerald-600 p-2.5 rounded-xl shadow-inner">
-              <Building2 className="w-7 h-7 text-white" />
-            </div>
+            <div className="bg-emerald-600 p-2.5 rounded-xl"><Building2 className="w-7 h-7 text-white" /></div>
             <div>
-              <h1 className="text-xl font-bold tracking-tight">Çağ Trio Apartmanı C Blok</h1>
-              <p className="text-xs text-slate-400 flex items-center gap-2">
-                <span>Yönetim ve Bilgilendirme Paneli</span>
-                <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                <span className="text-emerald-400 font-medium">Bulut Senkronizasyonu Aktif</span>
-              </p>
+              <h1 className="text-xl font-bold">Çağ Trio Apartmanı C Blok</h1>
+              <p className="text-xs text-slate-400">Yönetim ve Bilgilendirme Paneli</p>
             </div>
           </div>
-
           {session && (
             <div className="flex items-center gap-3 bg-slate-800 px-4 py-2 rounded-xl border border-slate-700">
-              <span className="text-sm font-medium text-slate-300">
-                {session.type === 'admin' ? '👑 Yönetici Modu' : `🏠 Daire ${session.aptNo} Sakini`}
-              </span>
-              <button 
-                onClick={() => setSession(null)}
-                className="flex items-center gap-1.5 bg-rose-600/20 text-rose-300 hover:bg-rose-600 hover:text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition"
-              >
-                <LogOut className="w-3.5 h-3.5" /> Çıkış Yap
+              <span className="text-sm font-medium text-slate-300">{session.type === 'admin' ? '👑 Yönetici' : `🏠 Daire ${session.aptNo}`}</span>
+              <button onClick={() => setSession(null)} className="bg-rose-600/20 text-rose-300 hover:bg-rose-600 hover:text-white px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1">
+                <LogOut className="w-3.5 h-3.5" /> Çıkış
               </button>
             </div>
           )}
@@ -302,240 +273,96 @@ export default function App() {
 
       {(errorMsg || successMsg) && (
         <div className="max-w-7xl mx-auto w-full px-4 mt-4">
-          {errorMsg && (
-            <div className="bg-rose-50 border-l-4 border-rose-500 text-rose-700 p-4 rounded-r-xl shadow-sm flex items-center gap-3">
-              <AlertCircle className="w-5 h-5 text-rose-500 flex-shrink-0" />
-              <p className="text-sm font-medium">{errorMsg}</p>
-            </div>
-          )}
-          {successMsg && (
-            <div className="bg-emerald-50 border-l-4 border-emerald-500 text-emerald-700 p-4 rounded-r-xl shadow-sm flex items-center gap-3">
-              <CheckCircle2 className="w-5 h-5 text-emerald-500 flex-shrink-0" />
-              <p className="text-sm font-medium">{successMsg}</p>
-            </div>
-          )}
+          {errorMsg && <div className="bg-rose-50 border-l-4 border-rose-500 text-rose-700 p-4 rounded-r">{errorMsg}</div>}
+          {successMsg && <div className="bg-emerald-50 border-l-4 border-emerald-500 text-emerald-700 p-4 rounded-r">{successMsg}</div>}
         </div>
       )}
 
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6">
         {!session ? (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto mt-6">
-            <div className="bg-white p-6 sm:p-8 rounded-2xl shadow-xl border border-slate-200 flex flex-col justify-between">
-              <div>
-                <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center mb-4">
-                  <Users className="w-6 h-6" />
+            <div className="bg-white p-6 sm:p-8 rounded-2xl shadow-xl border">
+              <h2 className="text-xl font-bold mb-2">Apartman Sakini Girişi</h2>
+              <form onSubmit={handleResidentLogin} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold uppercase mb-1.5">Daire Seçin</label>
+                  <select value={selectedAptNo} onChange={(e) => setSelectedAptNo(e.target.value)} className="w-full px-4 py-2.5 bg-slate-50 border rounded-xl" required>
+                    <option value="">Daire Seçiniz...</option>
+                    {data.apartments.map(apt => <option key={apt.id} value={apt.no}>Daire {apt.no} - {apt.owner}</option>)}
+                  </select>
                 </div>
-                <h2 className="text-xl font-bold text-slate-900 mb-2">Apartman Sakini Girişi</h2>
-                <p className="text-sm text-slate-500 mb-6">Dairenizi seçip kayıtlı telefon numaranızın son 4 hanesiyle aidatlarınızı ve kasa durumunu inceleyin.</p>
-                
-                <form onSubmit={handleResidentLogin} className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">Daire Seçin</label>
-                    <select 
-                      value={selectedAptNo} 
-                      onChange={(e) => setSelectedAptNo(e.target.value)}
-                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none font-medium"
-                      required
-                    >
-                      <option value="">Daire Seçiniz...</option>
-                      {data.apartments.map(apt => (
-                        <option key={apt.id} value={apt.no}>Daire {apt.no} - {apt.owner}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">Telefon Son 4 Hane</label>
-                    <input 
-                      type="password" 
-                      maxLength="4" 
-                      placeholder="Örn: 1234"
-                      value={loginPhone}
-                      onChange={(e) => setLoginPhone(e.target.value)}
-                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none tracking-widest font-mono"
-                      required
-                    />
-                  </div>
-
-                  <button 
-                    type="submit" 
-                    className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-xl transition shadow-lg shadow-blue-600/20 flex items-center justify-center gap-2"
-                  >
-                    <span>Daireme Giriş Yap</span>
-                    <ArrowUpRight className="w-4 h-4" />
-                  </button>
-                </form>
-              </div>
+                <div>
+                  <label className="block text-xs font-semibold uppercase mb-1.5">Telefon Son 4 Hane</label>
+                  <input type="password" maxLength="4" placeholder="1234" value={loginPhone} onChange={(e) => setLoginPhone(e.target.value)} className="w-full px-4 py-2.5 bg-slate-50 border rounded-xl font-mono" required />
+                </div>
+                <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-xl">Giriş Yap</button>
+              </form>
             </div>
 
-            <div className="bg-white p-6 sm:p-8 rounded-2xl shadow-xl border border-slate-200 flex flex-col justify-between">
-              <div>
-                <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center mb-4">
-                  <Shield className="w-6 h-6" />
+            <div className="bg-white p-6 sm:p-8 rounded-2xl shadow-xl border">
+              <h2 className="text-xl font-bold mb-2">Yönetici Girişi</h2>
+              <form onSubmit={handleAdminLogin} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold uppercase mb-1.5">Yönetici Parolası</label>
+                  <input type="password" placeholder="admin" value={adminPassInput} onChange={(e) => setAdminPassInput(e.target.value)} className="w-full px-4 py-2.5 bg-slate-50 border rounded-xl font-mono" required />
                 </div>
-                <h2 className="text-xl font-bold text-slate-900 mb-2">Yönetici Girişi</h2>
-                <p className="text-sm text-slate-500 mb-6">Aidatları, aidat tutarlarını, harcama ve bakım kayıtlarını yönetmek için giriş yapın.</p>
-                
-                <form onSubmit={handleAdminLogin} className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">Yönetici Parolası</label>
-                    <input 
-                      type="password" 
-                      placeholder="Varsayılan: admin"
-                      value={adminPassInput}
-                      onChange={(e) => setAdminPassInput(e.target.value)}
-                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none font-mono"
-                      required
-                    />
-                  </div>
-
-                  <button 
-                    type="submit" 
-                    className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 rounded-xl transition shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-2 mt-auto"
-                  >
-                    <span>Yönetim Paneline Git</span>
-                    <ArrowUpRight className="w-4 h-4" />
-                  </button>
-                </form>
-              </div>
+                <button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 rounded-xl mt-6">Yönetime Git</button>
+              </form>
             </div>
           </div>
         ) : session.type === 'admin' ? (
           <div className="space-y-6">
-            <div className="flex flex-wrap gap-2 bg-white p-2 rounded-2xl shadow-sm border border-slate-200">
-              <button onClick={() => setActiveTab('dashboard')} className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition ${activeTab === 'dashboard' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-600 hover:bg-slate-100'}`}><Wallet className="w-4 h-4" /> Finans & Özet</button>
-              <button onClick={() => setActiveTab('apartments')} className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition ${activeTab === 'apartments' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-600 hover:bg-slate-100'}`}><Users className="w-4 h-4" /> Daireler & Aidatlar</button>
-              <button onClick={() => setActiveTab('extras')} className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition ${activeTab === 'extras' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-600 hover:bg-slate-100'}`}><Layers className="w-4 h-4" /> Ekstra / Demirbaş</button>
-              <button onClick={() => setActiveTab('finances')} className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition ${activeTab === 'finances' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-600 hover:bg-slate-100'}`}><FileText className="w-4 h-4" /> Harcamalar & Fişler</button>
-              <button onClick={() => setActiveTab('maintenance')} className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition ${activeTab === 'maintenance' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-600 hover:bg-slate-100'}`}><Wrench className="w-4 h-4" /> Temizlik & Asansör</button>
-              <button onClick={() => setActiveTab('settings')} className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition ${activeTab === 'settings' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-600 hover:bg-slate-100'}`}><Key className="w-4 h-4" /> Ayarlar</button>
+            <div className="flex flex-wrap gap-2 bg-white p-2 rounded-2xl shadow-sm border">
+              <button onClick={() => setActiveTab('dashboard')} className={`px-4 py-2.5 rounded-xl text-sm font-semibold ${activeTab === 'dashboard' ? 'bg-emerald-600 text-white' : 'text-slate-600'}`}>Özet</button>
+              <button onClick={() => setActiveTab('apartments')} className={`px-4 py-2.5 rounded-xl text-sm font-semibold ${activeTab === 'apartments' ? 'bg-emerald-600 text-white' : 'text-slate-600'}`}>Daireler</button>
+              <button onClick={() => setActiveTab('extras')} className={`px-4 py-2.5 rounded-xl text-sm font-semibold ${activeTab === 'extras' ? 'bg-emerald-600 text-white' : 'text-slate-600'}`}>Ekstralar</button>
+              <button onClick={() => setActiveTab('finances')} className={`px-4 py-2.5 rounded-xl text-sm font-semibold ${activeTab === 'finances' ? 'bg-emerald-600 text-white' : 'text-slate-600'}`}>Harcamalar & Fişler</button>
+              <button onClick={() => setActiveTab('maintenance')} className={`px-4 py-2.5 rounded-xl text-sm font-semibold ${activeTab === 'maintenance' ? 'bg-emerald-600 text-white' : 'text-slate-600'}`}>Temizlik & Asansör</button>
+              <button onClick={() => setActiveTab('settings')} className={`px-4 py-2.5 rounded-xl text-sm font-semibold ${activeTab === 'settings' ? 'bg-emerald-600 text-white' : 'text-slate-600'}`}>Ayarlar</button>
             </div>
 
             {activeTab === 'dashboard' && (
-              <div className="space-y-6">
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-                  <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
-                    <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Devir</p>
-                    <h3 className="text-xl font-bold text-slate-900">{data.previousYearBalance} ₺</h3>
-                  </div>
-                  <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
-                    <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Aidatlar</p>
-                    <h3 className="text-xl font-bold text-emerald-600">{totalIncomeFromFees} ₺</h3>
-                  </div>
-                  <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
-                    <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Ekstralar</p>
-                    <h3 className="text-xl font-bold text-indigo-600">{totalIncomeFromExtras} ₺</h3>
-                  </div>
-                  <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
-                    <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Harcamalar</p>
-                    <h3 className="text-xl font-bold text-rose-600">{totalExpenses} ₺</h3>
-                  </div>
-                  <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
-                    <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">Net Kasa</p>
-                    <h3 className={`text-xl font-bold ${netBalance >= 0 ? 'text-slate-900' : 'text-rose-600'}`}>{netBalance} ₺</h3>
-                  </div>
-                </div>
-
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                  <h3 className="text-lg font-bold text-slate-900 mb-2">Önceki Yıldan Devir Bakiyesi</h3>
-                  <div className="flex gap-3 max-w-md">
-                    <input 
-                      type="number" 
-                      value={data.previousYearBalance}
-                      onChange={(e) => saveData({ ...data, previousYearBalance: Number(e.target.value) })}
-                      className="flex-1 px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl font-medium"
-                    />
-                    <button onClick={() => showNotification("Devir güncellendi.")} className="bg-emerald-600 text-white font-semibold px-5 py-2.5 rounded-xl">Kaydet</button>
-                  </div>
-                </div>
+              <div className="grid grid-cols-1 sm:grid-cols-5 gap-4">
+                <div className="bg-white p-5 rounded-2xl border"><p className="text-xs text-slate-400">Devir</p><h3 className="text-xl font-bold">{data.previousYearBalance} ₺</h3></div>
+                <div className="bg-white p-5 rounded-2xl border"><p className="text-xs text-slate-400">Aidatlar</p><h3 className="text-xl font-bold text-emerald-600">{totalIncomeFromFees} ₺</h3></div>
+                <div className="bg-white p-5 rounded-2xl border"><p className="text-xs text-slate-400">Ekstralar</p><h3 className="text-xl font-bold text-indigo-600">{totalIncomeFromExtras} ₺</h3></div>
+                <div className="bg-white p-5 rounded-2xl border"><p className="text-xs text-slate-400">Harcamalar</p><h3 className="text-xl font-bold text-rose-600">{totalExpenses} ₺</h3></div>
+                <div className="bg-white p-5 rounded-2xl border"><p className="text-xs text-slate-400">Net Kasa</p><h3 className="text-xl font-bold">{netBalance} ₺</h3></div>
               </div>
             )}
 
             {activeTab === 'apartments' && (
               <div className="space-y-6">
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                  <h3 className="text-lg font-bold text-slate-900 mb-1">Yeni Daire Ekle veya Düzenle</h3>
-                  <p className="text-xs text-slate-500 mb-4">Varsayılan aidat ücreti Ayarlar'dan otomatik olarak <strong>{defaultFee} ₺</strong> gelmektedir.</p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-                    <input type="text" placeholder="Daire No" value={newAptNo} onChange={(e) => setNewAptNo(e.target.value)} className="px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl" />
-                    <input type="text" placeholder="Bina Sahibi" value={newOwner} onChange={(e) => setNewOwner(e.target.value)} className="px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl" />
-                    <input type="text" maxLength="4" placeholder="Tel Son 4" value={newPhone} onChange={(e) => setNewPhone(e.target.value)} className="px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl font-mono" />
-                    <input type="number" placeholder={`Aylık Aidat (${defaultFee} ₺)`} value={newFee !== "" ? newFee : defaultFee} onChange={(e) => setNewFee(e.target.value)} className="px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl" />
+                <div className="bg-white p-6 rounded-2xl border">
+                  <h3 className="text-lg font-bold mb-4">Yeni Daire Ekle</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-5 gap-4">
+                    <input type="text" placeholder="Daire No" value={newAptNo} onChange={(e) => setNewAptNo(e.target.value)} className="px-4 py-2.5 border rounded-xl" />
+                    <input type="text" placeholder="Sahibi" value={newOwner} onChange={(e) => setNewOwner(e.target.value)} className="px-4 py-2.5 border rounded-xl" />
+                    <input type="text" maxLength="4" placeholder="Tel 4 Hane" value={newPhone} onChange={(e) => setNewPhone(e.target.value)} className="px-4 py-2.5 border rounded-xl" />
+                    <input type="number" placeholder={`Aidat (${defaultFee} ₺)`} value={newFee !== "" ? newFee : defaultFee} onChange={(e) => setNewFee(e.target.value)} className="px-4 py-2.5 border rounded-xl" />
                     <button onClick={() => {
-                      if (!newAptNo || !newOwner || !newPhone) return showNotification("Tüm alanları doldurun.", true);
-                      const feeToUse = newFee !== "" ? Number(newFee) : defaultFee;
-                      const existing = data.apartments.find(a => a.no === newAptNo);
-                      const updated = existing ? data.apartments.map(a => a.no === newAptNo ? { ...a, owner: newOwner, phone: newPhone, monthlyFee: feeToUse } : a) : [...data.apartments, { id: Date.now(), no: newAptNo, owner: newOwner, phone: newPhone, monthlyFee: feeToUse }];
+                      if (!newAptNo || !newOwner || !newPhone) return showNotification("Alanları doldurun.", true);
+                      const updated = [...data.apartments, { id: Date.now(), no: newAptNo, owner: newOwner, phone: newPhone, monthlyFee: newFee !== "" ? Number(newFee) : defaultFee }];
                       saveData({ ...data, apartments: updated });
                       setNewAptNo(""); setNewOwner(""); setNewPhone(""); setNewFee("");
-                      showNotification("Daire kaydedildi.");
+                      showNotification("Daire eklendi.");
                     }} className="bg-emerald-600 text-white font-semibold py-2.5 rounded-xl">Kaydet</button>
                   </div>
                 </div>
-
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 overflow-x-auto">
-                  <h3 className="text-lg font-bold text-slate-900 mb-2">Daireler & Aidat Ücretleri Yönetimi</h3>
-                  <table className="w-full text-left border-collapse text-sm">
+                <div className="bg-white p-6 rounded-2xl border overflow-x-auto">
+                  <table className="w-full text-left text-sm">
                     <thead>
-                      <tr className="border-b bg-slate-50 text-slate-500 uppercase text-xs">
-                        <th className="p-3">Daire</th>
-                        <th className="p-3">Sahibi</th>
-                        <th className="p-3">Tel</th>
-                        <th className="p-3">Aylık Aidat (₺)</th>
-                        {MONTHS.map((m, idx) => <th key={idx} className="p-2 text-center">{m}</th>)}
+                      <tr className="border-b bg-slate-50">
+                        <th className="p-3">Daire</th><th className="p-3">Sahibi</th><th className="p-3">Tel</th><th className="p-3">Aidat</th>
+                        {MONTHS.map((m, i) => <th key={i} className="p-2 text-center">{m}</th>)}
                         <th className="p-3 text-right">Sil</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y">
                       {data.apartments.map(apt => (
-                        <tr key={apt.id} className="hover:bg-slate-50">
-                          <td className="p-3 font-bold">No: {apt.no}</td>
+                        <tr key={apt.id}>
+                          <td className="p-3 font-bold">{apt.no}</td>
                           <td className="p-3">{apt.owner}</td>
-                          <td className="p-3 font-mono text-slate-500">{apt.phone}</td>
-                          <td className="p-3">
-                            <input 
-                              type="number" 
-                              value={apt.monthlyFee !== undefined ? apt.monthlyFee : defaultFee}
-                              onChange={(e) => {
-                                const val = Number(e.target.value);
-                                const updated = data.apartments.map(a => a.id === apt.id ? { ...a, monthlyFee: val } : a);
-                                saveData({ ...data, apartments: updated });
-                              }}
-                              className="w-24 px-2 py-1 bg-white border border-slate-300 rounded-lg font-semibold text-emerald-600"
-                            />
-                          </td>
-                          {MONTHS.map((_, mIdx) => {
-                            const key = `${apt.no}_${mIdx}`;
-                            const isPaid = !!data.payments[key];
-                            return (
-                              <td key={mIdx} className="p-2 text-center">
-                                <button onClick={() => saveData({ ...data, payments: { ...data.payments, [key]: !isPaid } })} className={`w-8 h-8 rounded-lg font-bold text-xs mx-auto flex items-center justify-center ${isPaid ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-500'}`}>{isPaid ? '✓' : '•'}</button>
-                              </td>
-                            );
-                          })}
-                          <td className="p-3 text-right">
-                            <button onClick={() => saveData({ ...data, apartments: data.apartments.filter(a => a.id !== apt.id) })} className="text-rose-500 p-1"><Trash2 className="w-4 h-4" /></button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
-            {activeTab === 'extras' && (
-              <div className="space-y-6">
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                  <h3 className="text-lg font-bold text-slate-900 mb-2">Yeni Ekstra / Demirbaş Ödemesi Ekle (Örn: Kamera)</h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                    <input type="text" placeholder="Kalem Adı" value={extraTitle} onChange={(e) => setExtraTitle(e.target.value)} className="px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl" />
-                    <input type="number" placeholder="Daire Başı Tutar (₺)" value={extraAmount} onChange={(e) => setExtraAmount(e.target.value)} className="px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl" />
-                    <input type="date" value={extraDate} onChange={(e) => setExtraDate(e.target.value)} className="px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl" />
-                    <button onClick={() => {
-                      if (!extraTitle || !extraAmount) return showNotification("Alanları doldurun.", true);
-                      const newItem = { id: Date.now(), title: extraTitle, amountPerApt: Number(extraAmount), date: extraDate };
-                      saveData({ ...data, extraItems: [newItem, ...(data.extraItems || [])] });
-                      setExtraTitle(""); setExtraAmount("");
-                      showNotification("Ekstra ödeme kalemi eklendi.");
-                    }} className="bg-indigo-60
+                          <td className="p-3 font-mono">{apt.phone}</td>
+                          <td className="p-3"><input type="number" value={apt.monthlyFee ?? defaultFee} onChange={(e) => {
+                            const
