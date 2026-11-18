@@ -473,7 +473,25 @@ export default function App() {
                                 {isManager ? (
                                   <span title="Yönetici aylık aidattan muaf" className="inline-block text-[10px] font-bold text-amber-800 bg-amber-100 rounded px-1.5 py-1">Muaf</span>
                                 ) : (
-                                  <button onClick={() => saveData({ ...data, payments: { ...data.payments, [key]: !isPaid } })} className={`w-8 h-8 rounded text-xs font-bold ${isPaid ? 'bg-emerald-600 text-white' : 'bg-slate-200'}`}>{isPaid ? '✓' : '•'}</button>
+                                  <button
+                                    type="button"
+                                    aria-label={`Daire ${apt.no} - ${MONTHS[mIdx]} ${selectedYear} aidatını ${isPaid ? "ödenmedi" : "ödendi"} olarak işaretle`}
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      const nextPayments = {
+                                        ...(data.payments || {}),
+                                        [key]: !isPaid
+                                      };
+                                      saveData({
+                                        ...data,
+                                        payments: nextPayments
+                                      });
+                                    }}
+                                    className={`w-8 h-8 rounded text-xs font-bold ${isPaid ? 'bg-emerald-600 text-white' : 'bg-slate-200'}`}
+                                  >
+                                    {isPaid ? '✓' : '•'}
+                                  </button>
                                 )}
                               </td>
                             );
