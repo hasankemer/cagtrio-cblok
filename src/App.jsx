@@ -191,7 +191,103 @@ export default function App() {
     }
     if (apt.phone === loginPhone.trim()) {
       setSession({ type: 'resident', aptNo: apt.no });
-      showNotification(`Daire ${apt.no} sayfasına hoş geldiniz.`); } else { showNotification("Telefonun son 4 hanesi hatalı!", true); } };  const handleImageUpload = (e) => { const file = e.target.files[0]; if (!file) return; if (file.size > 1024 * 1024 * 2) { showNotification("Fiş görseli çok büyük (Maksimum 2MB olmalı).", true); return; } const reader = new FileReader(); reader.onloadend = () => { setExpReceipt(reader.result); showNotification("Fiş görseli başarıyla seçildi."); }; reader.readAsDataURL(file); };  const defaultFee = Number(data.defaultMonthlyFee \vert{}\vert{} 500);  const totalIncomeFromFees = data.apartments.reduce((acc, apt) => { let count = 0; MONTHS.forEach((_, idx) => { if (data.payments[`${apt.no}_${idx}`]) count++; }); return acc + (count * (apt.monthlyFee !== undefined ? Number(apt.monthlyFee) : defaultFee)); }, 0);  const totalIncomeFromExtras = (data.extraItems \vert{}\vert{} []).reduce((acc, item) => { let paidCount = 0; data.apartments.forEach(apt => { if (data.extraPayments?.[`${item.id}_${apt.no}`]) paidCount++; }); return acc + (paidCount * Number(item.amountPerApt \vert{}\vert{} 0)); }, 0);  const totalBalance = (data.previousYearBalance \vert{}\vert{} 0) + totalIncomeFromFees + totalIncomeFromExtras; const totalExpenses = data.expenses.reduce((acc, exp) => acc + Number(exp.amount \vert{}\vert{} 0), 0); const netBalance = totalBalance - totalExpenses;  if (loading) { return ( <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center text-white"> <RefreshCw className="w-10 h-10 animate-spin text-emerald-400 mb-4" /> <p className="text-lg font-medium">Çağ Trio Apartmanı C Blok Sistemi Yükleniyor...</p> </div> ); }  return ( <div className="min-h-screen bg-slate-100 text-slate-800 flex flex-col font-sans"> {viewingImage && ( <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"> <div className="bg-white rounded-2xl max-w-2xl w-full p-4 relative shadow-2xl flex flex-col items-center"> <button onClick={() => setViewingImage(null)} className="absolute top-4 right-4 bg-slate-100 hover:bg-slate-200 p-2 rounded-full transition" > <X className="w-5 h-5 text-slate-700" /> </button> <h3 className="text-base font-bold text-slate-900 mb-3">Harcama Fişi / Belge Görseli</h3> <div className="max-h-[70vh] overflow-auto w-full flex justify-center bg-slate-50 p-2 rounded-xl border"> <img src={viewingImage} alt="Fiş Görseli" className="max-w-full h-auto object-contain rounded-lg" /> </div> <button onClick={() => setViewingImage(null)} className="mt-4 bg-slate-900 text-white px-6 py-2 rounded-xl text-sm font-semibold" > Kapat </button> </div> </div> )}  <header className="bg-slate-900 text-white shadow-md"> <div className="max-w-7xl mx-auto px-4 py-4 flex flex-col sm:flex-row justify-between items-center gap-4"> <div className="flex items-center gap-3"> <div className="bg-emerald-600 p-2.5 rounded-xl shadow-inner"> <Building2 className="w-7 h-7 text-white" /> </div> <div> <h1 className="text-xl font-bold tracking-tight">Çağ Trio Apartmanı C Blok</h1> <p className="text-xs text-slate-400 flex items-center gap-2"> <span>Yönetim ve Bilgilendirme Paneli</span> <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> <span className="text-emerald-400 font-medium">Bulut Senkronizasyonu Aktif</span> </p> </div> </div>  {session && ( <div className="flex items-center gap-3 bg-slate-800 px-4 py-2 rounded-xl border border-slate-700"> <span className="text-sm font-medium text-slate-300"> {session.type === 'admin' ? '👑 Yönetici Modu' : `🏠 Daire ${session.aptNo} Sakini`}
+      showNotification(`Daire ${apt.no} sayfasına hoş geldiniz.`);
+    } else {
+      showNotification("Telefonun son 4 hanesi hatalı!", true);
+    }
+  };
+
+  const handleImageUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (file.size > 1024 * 1024 * 2) {
+      showNotification("Fiş görseli çok büyük (Maksimum 2MB olmalı).", true);
+      return;
+    }
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setExpReceipt(reader.result);
+      showNotification("Fiş görseli başarıyla seçildi.");
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const defaultFee = Number(data.defaultMonthlyFee || 500);
+
+  const totalIncomeFromFees = data.apartments.reduce((acc, apt) => {
+    let count = 0;
+    MONTHS.forEach((_, idx) => {
+      if (data.payments[`${apt.no}_${idx}`]) count++;
+    });
+    return acc + (count * (apt.monthlyFee !== undefined ? Number(apt.monthlyFee) : defaultFee));
+  }, 0);
+
+  const totalIncomeFromExtras = (data.extraItems || []).reduce((acc, item) => {
+    let paidCount = 0;
+    data.apartments.forEach(apt => {
+      if (data.extraPayments?.[`${item.id}_${apt.no}`]) paidCount++;
+    });
+    return acc + (paidCount * Number(item.amountPerApt || 0));
+  }, 0);
+
+  const totalBalance = (data.previousYearBalance || 0) + totalIncomeFromFees + totalIncomeFromExtras;
+  const totalExpenses = data.expenses.reduce((acc, exp) => acc + Number(exp.amount || 0), 0);
+  const netBalance = totalBalance - totalExpenses;
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center text-white">
+        <RefreshCw className="w-10 h-10 animate-spin text-emerald-400 mb-4" />
+        <p className="text-lg font-medium">Çağ Trio Apartmanı C Blok Sistemi Yükleniyor...</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-slate-100 text-slate-800 flex flex-col font-sans">
+      {viewingImage && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-2xl w-full p-4 relative shadow-2xl flex flex-col items-center">
+            <button 
+              onClick={() => setViewingImage(null)}
+              className="absolute top-4 right-4 bg-slate-100 hover:bg-slate-200 p-2 rounded-full transition"
+            >
+              <X className="w-5 h-5 text-slate-700" />
+            </button>
+            <h3 className="text-base font-bold text-slate-900 mb-3">Harcama Fişi / Belge Görseli</h3>
+            <div className="max-h-[70vh] overflow-auto w-full flex justify-center bg-slate-50 p-2 rounded-xl border">
+              <img src={viewingImage} alt="Fiş Görseli" className="max-w-full h-auto object-contain rounded-lg" />
+            </div>
+            <button 
+              onClick={() => setViewingImage(null)}
+              className="mt-4 bg-slate-900 text-white px-6 py-2 rounded-xl text-sm font-semibold"
+            >
+              Kapat
+            </button>
+          </div>
+        </div>
+      )}
+
+      <header className="bg-slate-900 text-white shadow-md">
+        <div className="max-w-7xl mx-auto px-4 py-4 flex flex-col sm:flex-row justify-between items-center gap-4">
+          <div className="flex items-center gap-3">
+            <div className="bg-emerald-600 p-2.5 rounded-xl shadow-inner">
+              <Building2 className="w-7 h-7 text-white" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold tracking-tight">Çağ Trio Apartmanı C Blok</h1>
+              <p className="text-xs text-slate-400 flex items-center gap-2">
+                <span>Yönetim ve Bilgilendirme Paneli</span>
+                <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span className="text-emerald-400 font-medium">Bulut Senkronizasyonu Aktif</span>
+              </p>
+            </div>
+          </div>
+
+          {session && (
+            <div className="flex items-center gap-3 bg-slate-800 px-4 py-2 rounded-xl border border-slate-700">
+              <span className="text-sm font-medium text-slate-300">
+                {session.type === 'admin' ? '👑 Yönetici Modu' : `🏠 Daire ${session.aptNo} Sakini`}
               </span>
               <button 
                 onClick={() => setSession(null)}
@@ -442,24 +538,4 @@ export default function App() {
                       saveData({ ...data, extraItems: [newItem, ...(data.extraItems || [])] });
                       setExtraTitle(""); setExtraAmount("");
                       showNotification("Ekstra ödeme kalemi eklendi.");
-                    }} className="bg-indigo-600 text-white font-semibold py-2.5 rounded-xl">Ekle</button>
-                  </div>
-                </div>
-
-                {(data.extraItems || []).map(item => {
-                  const paidCount = data.apartments.filter(apt => data.extraPayments?.[`${item.id}_${apt.no}`]).length;
-                  return (
-                    <div key={item.id} className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-                      <div className="flex justify-between items-center mb-4 pb-4 border-b">
-                        <div>
-                          <h4 className="text-lg font-bold">{item.title}</h4>
-                          <p className="text-xs text-slate-500">Daire Başı: <strong>{item.amountPerApt} ₺</strong> • Ödeyen: {paidCount} / {data.apartments.length}</p>
-                        </div>
-                        <button onClick={() => saveData({ ...data, extraItems: data.extraItems.filter(i => i.id !== item.id) })} className="text-rose-600 text-xs font-semibold"><Trash2 className="w-4 h-4 inline" /> Sil</button>
-                      </div>
-                      <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3">
-                        {data.apartments.map(apt => {
-                          const key = `${item.id}_${apt.no}`;
-                          const isPaid = !!data.extraPayments?.[key];
-                          return (
-                            <button key={apt.id} onClick={() => saveData({ ...data, extraPayments: { ...(data.extraPayments || {}), [key]: !isPaid } })} className={`p-3 rounded-xl border text-left flex flex-col justify-between
+                    }} className="bg-indigo-60
