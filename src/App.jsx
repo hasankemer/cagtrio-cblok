@@ -727,9 +727,28 @@ export default function App() {
                       <div className="space-y-2 max-h-48 overflow-y-auto">
                         {[...(data.managerHistory || [])].sort((a, b) => b.startDate.localeCompare(a.startDate)).map((item, idx) => {
                           const apt = data.apartments.find(a => String(a.no) === String(item.apartmentNo));
-                          return <div key={`${item.apartmentNo}_${item.startDate}_${idx}`} className="flex justify-between gap-3 text-sm bg-slate-50 rounded-lg p-3">
-                            <span><b>Daire {item.apartmentNo}</b>{apt ? ` - ${apt.owner}` : ""}</span>
-                            <span className="text-xs text-slate-500 text-right">{item.startDate} – {item.endDate || "Devam ediyor"}</span>
+                          return <div key={`${item.apartmentNo}_${item.startDate}_${idx}`} className="flex items-center justify-between gap-3 text-sm bg-slate-50 rounded-lg p-3">
+                            <span className="min-w-0"><b>Daire {item.apartmentNo}</b>{apt ? ` - ${apt.owner}` : ""}</span>
+                            <div className="flex items-center gap-3 shrink-0">
+                              <span className="text-xs text-slate-500 text-right">{item.startDate} – {item.endDate || "Devam ediyor"}</span>
+                              <button
+                                type="button"
+                                title="Görev kaydını sil"
+                                aria-label={`Daire ${item.apartmentNo} görev kaydını sil`}
+                                onClick={() => {
+                                  if (!window.confirm(`Daire ${item.apartmentNo} için ${item.startDate} tarihli yönetici görev kaydı silinsin mi? Bu kayda bağlı geçmiş aidat muafiyeti hesabı da değişebilir.`)) return;
+                                  const updatedHistory = (data.managerHistory || []).filter((_, historyIndex) => historyIndex !== (data.managerHistory || []).indexOf(item));
+                                  const removesActiveManager = !item.endDate && String(data.managerApartmentNo || "") === String(item.apartmentNo);
+                                  saveData({
+                                    ...data,
+                                    managerHistory: updatedHistory,
+                                    managerApartmentNo: removesActiveManager ? "" : data.managerApartmentNo
+                                  });
+                                  showNotification("Yönetici görev kaydı silindi.");
+                                }}
+                                className="p-2 rounded-lg text-red-600 hover:bg-red-50"
+                              ><Trash2 size={16} /></button>
+                            </div>
                           </div>;
                         })}
                       </div>}
