@@ -75,7 +75,7 @@ export default function App() {
   const [newAptNo, setNewAptNo] = useState("");
   const [newOwner, setNewOwner] = useState("");
   const [newPhone, setNewPhone] = useState("");
-  const [newFee, setNewFee] = useState("500");
+  const [newFee, setNewFee] = useState("");
 
   const [extraTitle, setExtraTitle] = useState("");
   const [extraAmount, setExtraAmount] = useState("");
@@ -95,14 +95,14 @@ export default function App() {
   const [elevatorNote, setElevatorNote] = useState("");
 
   const [newAdminPass, setNewAdminPass] = useState("");
-  const [defaultFeeInput, setDefaultFeeInput] = useState("500");
+  const [defaultFeeInput, setDefaultFeeInput] = useState("");
   const [residentNewPhone, setResidentNewPhone] = useState("");
 
   useEffect(() => {
     const normalizeData = (raw) => ({
       ...INITIAL_DATA,
       ...raw,
-      defaultMonthlyFee: raw.defaultMonthlyFee !== undefined ? raw.defaultMonthlyFee : 500,
+      defaultMonthlyFee: raw.defaultMonthlyFee !== undefined ? Number(raw.defaultMonthlyFee) : 500,
       extraItems: raw.extraItems || [],
       extraPayments: raw.extraPayments || {},
       cleaningLogs: raw.cleaningLogs || [],
@@ -115,9 +115,10 @@ export default function App() {
         try {
           const parsed = normalizeData(JSON.parse(saved));
           setData(parsed);
-          setNewFee(String(parsed.defaultMonthlyFee));
           setDefaultFeeInput(String(parsed.defaultMonthlyFee));
         } catch(e) {}
+      } else {
+        setDefaultFeeInput(String(INITIAL_DATA.defaultMonthlyFee));
       }
       setLoading(false);
       return;
@@ -128,11 +129,11 @@ export default function App() {
       if (docSnap.exists()) {
         const normalized = normalizeData(docSnap.data());
         setData(normalized);
-        setNewFee(String(normalized.defaultMonthlyFee));
         setDefaultFeeInput(String(normalized.defaultMonthlyFee));
       } else {
         setDoc(docRef, INITIAL_DATA);
         setData(INITIAL_DATA);
+        setDefaultFeeInput(String(INITIAL_DATA.defaultMonthlyFee));
       }
       setLoading(false);
     }, (error) => {
@@ -236,4 +237,64 @@ export default function App() {
               <p className="text-xs text-slate-400 flex items-center gap-2">
                 <span>Yönetim ve Bilgilendirme Paneli</span>
                 <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                <span className="text-emerald-
+                <span className="text-emerald-400 font-medium">Bulut Senkronizasyonu Aktif</span>
+              </p>
+            </div>
+          </div>
+
+          {session && (
+            <div className="flex items-center gap-3 bg-slate-800 px-4 py-2 rounded-xl border border-slate-700">
+              <span className="text-sm font-medium text-slate-300">
+                {session.type === 'admin' ? '👑 Yönetici Modu' : `🏠 Daire ${session.aptNo} Sakini`}
+              </span>
+              <button 
+                onClick={() => setSession(null)}
+                className="flex items-center gap-1.5 bg-rose-600/20 text-rose-300 hover:bg-rose-600 hover:text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition"
+              >
+                <LogOut className="w-3.5 h-3.5" /> Çıkış Yap
+              </button>
+            </div>
+          )}
+        </div>
+      </header>
+
+      {(errorMsg || successMsg) && (
+        <div className="max-w-7xl mx-auto w-full px-4 mt-4">
+          {errorMsg && (
+            <div className="bg-rose-50 border-l-4 border-rose-500 text-rose-700 p-4 rounded-r-xl shadow-sm flex items-center gap-3">
+              <AlertCircle className="w-5 h-5 text-rose-500 flex-shrink-0" />
+              <p className="text-sm font-medium">{errorMsg}</p>
+            </div>
+          )}
+          {successMsg && (
+            <div className="bg-emerald-50 border-l-4 border-emerald-500 text-emerald-700 p-4 rounded-r-xl shadow-sm flex items-center gap-3">
+              <CheckCircle2 className="w-5 h-5 text-emerald-500 flex-shrink-0" />
+              <p className="text-sm font-medium">{successMsg}</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6">
+        {!session ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto mt-6">
+            <div className="bg-white p-6 sm:p-8 rounded-2xl shadow-xl border border-slate-200 flex flex-col justify-between">
+              <div>
+                <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center mb-4">
+                  <Users className="w-6 h-6" />
+                </div>
+                <h2 className="text-xl font-bold text-slate-900 mb-2">Apartman Sakini Girişi</h2>
+                <p className="text-sm text-slate-500 mb-6">Dairenizi seçip kayıtlı telefon numaranızın son 4 hanesiyle aidatlarınızı ve kasa durumunu inceleyin.</p>
+                
+                <form onSubmit={handleResidentLogin} className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">Daire Seçin</label>
+                    <select 
+                      value={selectedAptNo} 
+                      onChange={(e) => setSelectedAptNo(e.target.value)}
+                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none font-medium"
+                      required
+                    >
+                      <option value="">Daire Seçiniz...</option>
+                      {data.apartments.map(apt => (
+                        <option key={apt.id} value={apt.no}>Daire {
