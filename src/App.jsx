@@ -100,6 +100,7 @@ export default function App() {
 
   const [newAdminPass, setNewAdminPass] = useState("");
   const [defaultFeeInput, setDefaultFeeInput] = useState("");
+  const [previousYearBalanceInput, setPreviousYearBalanceInput] = useState(String(INITIAL_DATA.previousYearBalance));
   const [residentNewPhone, setResidentNewPhone] = useState("");
 
   useEffect(() => {
@@ -131,9 +132,11 @@ export default function App() {
           const parsed = normalizeData(JSON.parse(saved));
           setData(parsed);
           setDefaultFeeInput(String(parsed.defaultMonthlyFee));
+          setPreviousYearBalanceInput(String(parsed.previousYearBalance ?? 0));
         } catch(e) {}
       } else {
         setDefaultFeeInput(String(INITIAL_DATA.defaultMonthlyFee));
+        setPreviousYearBalanceInput(String(INITIAL_DATA.previousYearBalance));
       }
       setLoading(false);
       return;
@@ -145,10 +148,12 @@ export default function App() {
         const normalized = normalizeData(docSnap.data());
         setData(normalized);
         setDefaultFeeInput(String(normalized.defaultMonthlyFee));
+        setPreviousYearBalanceInput(String(normalized.previousYearBalance ?? 0));
       } else {
         setDoc(docRef, INITIAL_DATA);
         setData(INITIAL_DATA);
         setDefaultFeeInput(String(INITIAL_DATA.defaultMonthlyFee));
+        setPreviousYearBalanceInput(String(INITIAL_DATA.previousYearBalance));
       }
       setLoading(false);
     }, (error) => {
@@ -713,6 +718,20 @@ export default function App() {
 
             {activeTab === 'settings' && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="bg-white p-6 rounded-2xl border">
+                  <h3 className="text-lg font-bold mb-2">Önceki Yıldan Devir</h3>
+                  <p className="text-sm text-slate-500 mb-3">Geçen yıldan bu yıla devreden kasa bakiyesini girin.</p>
+                  <div className="flex gap-3 items-center">
+                    <input type="number" value={previousYearBalanceInput} onChange={(e) => setPreviousYearBalanceInput(e.target.value)} className="flex-1 min-w-0 px-4 py-2.5 border rounded-xl font-bold text-lg" placeholder="Devir tutarı" />
+                    <span className="font-semibold text-slate-500">₺</span>
+                  </div>
+                  <button type="button" onClick={() => {
+                    const amount = Number(previousYearBalanceInput);
+                    if (!Number.isFinite(amount)) return showNotification("Geçerli bir devir tutarı girin.", true);
+                    saveData({ ...data, previousYearBalance: amount });
+                    showNotification("Devir tutarı kaydedildi.");
+                  }} className="mt-3 w-full bg-emerald-600 text-white py-2.5 rounded-xl font-semibold">Devir Tutarını Kaydet</button>
+                </div>
                 <div className="bg-white p-6 rounded-2xl border flex flex-col justify-between">
                   <div>
                     <h3 className="text-lg font-bold mb-2">Varsayılan Aylık Aidat</h3>
