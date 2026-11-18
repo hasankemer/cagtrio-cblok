@@ -383,3 +383,50 @@ export default function App() {
             {activeTab === 'dashboard' && (
               <div className="grid grid-cols-1 sm:grid-cols-5 gap-4">
                 <div className="bg-white p-5 rounded-2xl border"><p className="text-xs text-slate-400">Devir</p><h3 className="text-xl font-bold">{data.previousYearBalance} ₺</h3></div>
+                <div className="bg-white p-5 rounded-2xl border"><p className="text-xs text-slate-400">Aidatlar</p><h3 className="text-xl font-bold text-emerald-600">{totalIncomeFromFees} ₺</h3></div>
+                <div className="bg-white p-5 rounded-2xl border"><p className="text-xs text-slate-400">Ekstralar</p><h3 className="text-xl font-bold text-indigo-600">{totalIncomeFromExtras} ₺</h3></div>
+                <div className="bg-white p-5 rounded-2xl border"><p className="text-xs text-slate-400">Harcamalar</p><h3 className="text-xl font-bold text-rose-600">{totalExpenses} ₺</h3></div>
+                <div className="bg-white p-5 rounded-2xl border"><p className="text-xs text-slate-400">Net Kasa</p><h3 className="text-xl font-bold">{netBalance} ₺</h3></div>
+              </div>
+            )}
+
+            {activeTab === 'apartments' && (
+              <div className="space-y-6">
+                <div className="bg-white p-6 rounded-2xl border">
+                  <h3 className="text-lg font-bold mb-4">Yeni Daire Ekle</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-5 gap-4">
+                    <input type="text" placeholder="Daire No" value={newAptNo} onChange={(e) => setNewAptNo(e.target.value)} className="px-4 py-2.5 border rounded-xl" />
+                    <input type="text" placeholder="Sahibi" value={newOwner} onChange={(e) => setNewOwner(e.target.value)} className="px-4 py-2.5 border rounded-xl" />
+                    <input type="text" maxLength="4" placeholder="Tel 4 Hane" value={newPhone} onChange={(e) => setNewPhone(e.target.value)} className="px-4 py-2.5 border rounded-xl font-mono" />
+                    <input type="number" placeholder={`Aidat (${defaultFee} ₺)`} value={newFee !== "" ? newFee : defaultFee} onChange={(e) => setNewFee(e.target.value)} className="px-4 py-2.5 border rounded-xl" />
+                    <button onClick={() => {
+                      if (!newAptNo || !newOwner || !newPhone) return showNotification("Alanları doldurun.", true);
+                      const updated = [...data.apartments, { id: Date.now(), no: newAptNo, owner: newOwner, phone: newPhone, monthlyFee: newFee !== "" ? Number(newFee) : defaultFee }];
+                      saveData({ ...data, apartments: updated });
+                      setNewAptNo(""); setNewOwner(""); setNewPhone(""); setNewFee("");
+                      showNotification("Daire eklendi.");
+                    }} className="bg-emerald-600 text-white font-semibold py-2.5 rounded-xl">Kaydet</button>
+                  </div>
+                </div>
+
+                <div className="bg-white p-6 rounded-2xl border overflow-x-auto">
+                  <h3 className="text-lg font-bold mb-4">Daire Listesi & Düzenleme</h3>
+                  <table className="w-full text-left text-sm">
+                    <thead>
+                      <tr className="border-b bg-slate-50">
+                        <th className="p-3">Daire</th><th className="p-3">Sahibi</th><th className="p-3">Tel</th><th className="p-3">Aidat</th>
+                        {MONTHS.map((m, i) => <th key={i} className="p-2 text-center">{m}</th>)}
+                        <th className="p-3 text-center">Düzenle</th>
+                        <th className="p-3 text-right">Sil</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {data.apartments.map(apt => (
+                        <tr key={apt.id}>
+                          <td className="p-3 font-bold">{apt.no}</td>
+                          <td className="p-3">{apt.owner}</td>
+                          <td className="p-3 font-mono">{apt.phone}</td>
+                          <td className="p-3 font-semibold text-emerald-600">{apt.monthlyFee ?? defaultFee} ₺</td>
+                          {MONTHS.map((_, mIdx) => {
+                            const key = `${apt.no}_${mIdx}`;
+                            const isPaid = !!data.payments
