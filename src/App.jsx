@@ -30,6 +30,8 @@ try {
 const INITIAL_DATA = {
   adminPassword: "admin",
   defaultMonthlyFee: 500,
+  managerApartmentNo: "",
+  managerHistory: [],
   apartments: [
     { id: 1, no: "1", owner: "Ahmet Yılmaz", phone: "1234", monthlyFee: 500 },
     { id: 2, no: "2", owner: "Ayşe Demir", phone: "5678", monthlyFee: 500 },
@@ -65,6 +67,9 @@ export default function App() {
   const [loginPhone, setLoginPhone] = useState("");
   const [adminPassInput, setAdminPassInput] = useState("");
   const [activeTab, setActiveTab] = useState("dashboard");
+  const currentYear = new Date().getFullYear();
+  const [selectedYear, setSelectedYear] = useState(currentYear);
+  const [managerEffectiveDate, setManagerEffectiveDate] = useState(`${currentYear}-${String(new Date().getMonth() + 1).padStart(2, "0")}-01`);
 
   const [newAptNo, setNewAptNo] = useState("");
   const [newOwner, setNewOwner] = useState("");
@@ -102,6 +107,16 @@ export default function App() {
       ...INITIAL_DATA,
       ...raw,
       defaultMonthlyFee: raw.defaultMonthlyFee !== undefined ? Number(raw.defaultMonthlyFee) : 500,
+      managerApartmentNo: raw.managerApartmentNo || "",
+      managerHistory: Array.isArray(raw.managerHistory) ? raw.managerHistory : [],
+      payments: (() => {
+        const oldPayments = raw.payments || {};
+        const migrated = { ...oldPayments };
+        Object.entries(oldPayments).forEach(([key, value]) => {
+          if (!/^\d{4}_/.test(key) && /^.+_\d{1,2}$/.test(key)) migrated[`${new Date().getFullYear()}_${key}`] = value;
+        });
+        return migrated;
+      })(),
       extraItems: raw.extraItems || [],
       extraPayments: raw.extraPayments || {},
       expenses: (raw.expenses || []).map(e => ({ ...e, receiptImage: e.receiptImage || "" })),
@@ -205,12 +220,27 @@ export default function App() {
     reader.readAsDataURL(file);
   };
 
+  const getPaymentKey = (year, aptNo, monthIndex) => `${year}_${aptNo}_${monthIndex}`;
+
+  const isManagerForMonth = (aptNo, year, monthIndex) => {
+    const monthDate = `${year}-${String(monthIndex + 1).padStart(2, "0")}-01`;
+    const history = data.managerHistory || [];
+    if (history.length > 0) {
+      return history.some(item =>
+        String(item.apartmentNo) === String(aptNo) &&
+        item.startDate <= monthDate &&
+        (!item.endDate || item.endDate >= monthDate)
+      );
+    }
+    return Number(year) === currentYear && String(data.managerApartmentNo || "") === String(aptNo);
+  };
+
   const defaultFee = Number(data.defaultMonthlyFee || 500);
 
   const totalIncomeFromFees = data.apartments.reduce((acc, apt) => {
     let count = 0;
     MONTHS.forEach((_, idx) => {
-      if (data.payments[`${apt.no}_${idx}`]) count++;
+      if (!isManagerForMonth(apt.no, selectedYear, idx) && data.payments[getPaymentKey(selectedYear, apt.no, idx)]) count++;
     });
     return acc + (count * (apt.monthlyFee !== undefined ? Number(apt.monthlyFee) : defaultFee));
   }, 0);
@@ -410,7 +440,14 @@ export default function App() {
                 </div>
 
                 <div className="bg-white p-6 rounded-2xl border overflow-x-auto">
-                  <h3 className="text-lg font-bold mb-4">Daire Listesi & Düzenleme</h3>
+                  <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                    <h3 className="text-lg font-bold">Daire Listesi & Düzenleme</h3>
+                    <label className="text-sm font-semibold flex items-center gap-2">Aidat yılı
+                      <select value={selectedYear} onChange={(e) => setSelectedYear(Number(e.target.value))} className="border rounded-lg px-3 py-2 bg-white">
+                        {Array.from({ length: 7 }, (_, i) => currentYear - 3 + i).map(year => <option key={year} value={year}>{year}</option>)}
+                      </select>
+                    </label>
+                  </div>
                   <table className="w-full text-left text-sm">
                     <thead>
                       <tr className="border-b bg-slate-50">
@@ -423,16 +460,21 @@ export default function App() {
                     <tbody className="divide-y">
                       {data.apartments.map(apt => (
                         <tr key={apt.id}>
-                          <td className="p-3 font-bold">{apt.no}</td>
+                          <td className="p-3 font-bold">{apt.no}{isManagerForMonth(apt.no, selectedYear, new Date().getMonth()) && selectedYear === currentYear && <span className="ml-2 text-[10px] bg-amber-100 text-amber-800 px-2 py-1 rounded-full">Yönetici</span>}</td>
                           <td className="p-3">{apt.owner}</td>
                           <td className="p-3 font-mono">{apt.phone}</td>
                           <td className="p-3 font-semibold text-emerald-600">{apt.monthlyFee ?? defaultFee} ₺</td>
                           {MONTHS.map((_, mIdx) => {
-                            const key = `${apt.no}_${mIdx}`;
+                            const key = getPaymentKey(selectedYear, apt.no, mIdx);
                             const isPaid = !!data.payments[key];
+                            const isManager = isManagerForMonth(apt.no, selectedYear, mIdx);
                             return (
                               <td key={mIdx} className="p-2 text-center">
-                                <button onClick={() => saveData({ ...data, payments: { ...data.payments, [key]: !isPaid } })} className={`w-8 h-8 rounded text-xs font-bold ${isPaid ? 'bg-emerald-600 text-white' : 'bg-slate-200'}`}>{isPaid ? '✓' : '•'}</button>
+                                {isManager ? (
+                                  <span title="Yönetici aylık aidattan muaf" className="inline-block text-[10px] font-bold text-amber-800 bg-amber-100 rounded px-1.5 py-1">Muaf</span>
+                                ) : (
+                                  <button onClick={() => saveData({ ...data, payments: { ...data.payments, [key]: !isPaid } })} className={`w-8 h-8 rounded text-xs font-bold ${isPaid ? 'bg-emerald-600 text-white' : 'bg-slate-200'}`}>{isPaid ? '✓' : '•'}</button>
+                                )}
                               </td>
                             );
                           })}
@@ -646,6 +688,55 @@ export default function App() {
                   </div>
                 </div>
 
+                <div className="bg-white p-6 rounded-2xl border">
+                  <h3 className="text-lg font-bold mb-2">Yönetici Görev Geçmişi ve Aidat Muafiyeti</h3>
+                  <p className="text-sm text-slate-500 mb-4">Yeni yöneticiyi ve göreve başlama ayını seçin. Kayıt geçmişi korunur; eski yöneticinin muafiyeti bitiş ayından sonra otomatik kalkar.</p>
+                  <div className="space-y-3">
+                    <select id="manager-apartment-select" defaultValue={data.managerApartmentNo || ""} className="w-full px-4 py-2.5 border rounded-xl bg-white">
+                      <option value="">Yönetici dairesi seçilmedi</option>
+                      {data.apartments.map(apt => <option key={apt.id} value={apt.no}>Daire {apt.no} - {apt.owner}</option>)}
+                    </select>
+                    <label className="block text-xs font-semibold text-slate-600">Göreve başlama ayı (ayın 1'i esas alınır)</label>
+                    <input type="date" value={managerEffectiveDate} onChange={(e) => setManagerEffectiveDate(e.target.value)} className="w-full px-4 py-2.5 border rounded-xl" />
+                    <button onClick={() => {
+                      const select = document.getElementById("manager-apartment-select");
+                      const nextApartmentNo = select ? select.value : "";
+                      const effectiveDate = managerEffectiveDate;
+                      if (!effectiveDate || !effectiveDate.endsWith("-01")) return showNotification("Başlangıç tarihini ayın 1'i olarak seçin.", true);
+                      const history = [...(data.managerHistory || [])];
+                      const openIndex = history.findIndex(item => !item.endDate);
+                      if (openIndex >= 0) {
+                        const previous = history[openIndex];
+                        if (effectiveDate <= previous.startDate) return showNotification("Yeni görev başlangıcı önceki başlangıç tarihinden sonra olmalı.", true);
+                        const end = new Date(`${effectiveDate}T00:00:00`);
+                        end.setDate(end.getDate() - 1);
+                        history[openIndex] = { ...previous, endDate: end.toISOString().slice(0, 10) };
+                      } else if (!history.length && data.managerApartmentNo) {
+                        const end = new Date(`${effectiveDate}T00:00:00`);
+                        end.setDate(end.getDate() - 1);
+                        history.push({ apartmentNo: data.managerApartmentNo, startDate: `${currentYear}-01-01`, endDate: end.toISOString().slice(0, 10) });
+                      }
+                      if (nextApartmentNo) history.push({ apartmentNo: nextApartmentNo, startDate: effectiveDate, endDate: "" });
+                      saveData({ ...data, managerApartmentNo: nextApartmentNo, managerHistory: history });
+                      showNotification(nextApartmentNo ? `Daire ${nextApartmentNo} için yönetici görevi kaydedildi.` : "Yönetici görevi sonlandırıldı.");
+                    }} className="w-full bg-emerald-600 text-white py-2.5 rounded-xl font-semibold">Görevlendirmeyi Kaydet</button>
+                  </div>
+                  <div className="mt-5 border-t pt-4">
+                    <h4 className="font-bold text-sm mb-2">Görev geçmişi</h4>
+                    {(data.managerHistory || []).length === 0 ? <p className="text-xs text-slate-400">Henüz geçmiş kaydı yok. İlk kayıttan itibaren görev dönemleri burada tutulur.</p> :
+                      <div className="space-y-2 max-h-48 overflow-y-auto">
+                        {[...(data.managerHistory || [])].sort((a, b) => b.startDate.localeCompare(a.startDate)).map((item, idx) => {
+                          const apt = data.apartments.find(a => String(a.no) === String(item.apartmentNo));
+                          return <div key={`${item.apartmentNo}_${item.startDate}_${idx}`} className="flex justify-between gap-3 text-sm bg-slate-50 rounded-lg p-3">
+                            <span><b>Daire {item.apartmentNo}</b>{apt ? ` - ${apt.owner}` : ""}</span>
+                            <span className="text-xs text-slate-500 text-right">{item.startDate} – {item.endDate || "Devam ediyor"}</span>
+                          </div>;
+                        })}
+                      </div>}
+                  </div>
+                  <p className="text-xs text-amber-700 mt-3">Muafiyet, görevli olunan ayların tamamında uygulanır. Yalnızca aylık aidat içindir; ek ödeme / demirbaş kalemleri etkilenmez.</p>
+                </div>
+
                 <div className="bg-white p-6 rounded-2xl border flex flex-col justify-between">
                   <div>
                     <h3 className="text-lg font-bold mb-2">Yönetici Parolası</h3>
@@ -667,7 +758,9 @@ export default function App() {
             if (!currentApt) return <p>Daire bulunamadı.</p>;
             const aptFee = currentApt.monthlyFee !== undefined ? Number(currentApt.monthlyFee) : defaultFee;
             let paidMonthsCount = 0;
-            MONTHS.forEach((_, idx) => { if (data.payments[`${currentApt.no}_${idx}`]) paidMonthsCount++; });
+            MONTHS.forEach((_, idx) => {
+              if (!isManagerForMonth(currentApt.no, selectedYear, idx) && data.payments[getPaymentKey(selectedYear, currentApt.no, idx)]) paidMonthsCount++;
+            });
             const totalFeePaid = paidMonthsCount * aptFee;
             const totalExtraPaid = (data.extraItems || []).reduce((acc, item) => data.extraPayments?.[`${item.id}_${currentApt.no}`] ? acc + Number(item.amountPerApt || 0) : acc, 0);
 
@@ -685,14 +778,22 @@ export default function App() {
                 </div>
 
                 <div className="bg-white p-6 rounded-2xl border">
-                  <h3 className="text-lg font-bold mb-4">Aylık Aidat Durumu</h3>
+                  <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                    <h3 className="text-lg font-bold">Aylık Aidat Durumu</h3>
+                    <label className="text-sm font-semibold flex items-center gap-2">Yıl
+                      <select value={selectedYear} onChange={(e) => setSelectedYear(Number(e.target.value))} className="border rounded-lg px-3 py-2 bg-white">
+                        {Array.from({ length: 7 }, (_, i) => currentYear - 3 + i).map(year => <option key={year} value={year}>{year}</option>)}
+                      </select>
+                    </label>
+                  </div>
                   <div className="grid grid-cols-2 sm:grid-cols-6 gap-3">
                     {MONTHS.map((m, idx) => {
-                      const isPaid = !!data.payments[`${currentApt.no}_${idx}`];
+                      const isManagerThisMonth = isManagerForMonth(currentApt.no, selectedYear, idx);
+                      const isPaid = !!data.payments[getPaymentKey(selectedYear, currentApt.no, idx)];
                       return (
-                        <div key={idx} className={`p-3 rounded-xl border flex flex-col items-center justify-center gap-1 ${isPaid ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-slate-50'}`}>
+                        <div key={idx} className={`p-3 rounded-xl border flex flex-col items-center justify-center gap-1 ${isManagerThisMonth ? 'bg-amber-50 border-amber-200 text-amber-800' : isPaid ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-slate-50'}`}>
                           <span className="text-xs font-semibold">{m}</span>
-                          <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${isPaid ? 'bg-emerald-600 text-white' : 'bg-slate-200'}`}>{isPaid ? 'Ödendi' : 'Bekliyor'}</span>
+                          <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${isManagerThisMonth ? 'bg-amber-100 text-amber-800' : isPaid ? 'bg-emerald-600 text-white' : 'bg-slate-200'}`}>{isManagerThisMonth ? 'Muaf' : isPaid ? 'Ödendi' : 'Bekliyor'}</span>
                         </div>
                       );
                     })}
