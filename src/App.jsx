@@ -71,7 +71,6 @@ export default function App() {
   const [newPhone, setNewPhone] = useState("");
   const [newFee, setNewFee] = useState("");
 
-  // Daire Düzenleme Modal State'leri
   const [editingApt, setEditingApt] = useState(null);
 
   const [extraTitle, setExtraTitle] = useState("");
@@ -185,7 +184,144 @@ export default function App() {
     }
     if (apt.phone === loginPhone.trim()) {
       setSession({ type: 'resident', aptNo: apt.no });
-      showNotification(`Daire ${apt.no} sayfasına hoş geldiniz.`); } else { showNotification("Telefonun son 4 hanesi hatalı!", true); } };  const handleImageUpload = (e) => { const file = e.target.files[0]; if (!file) return; if (file.size > 1024 * 1024 * 2) { showNotification("Fiş görseli çok büyük (Maksimum 2MB olmalı).", true); return; } const reader = new FileReader(); reader.onloadend = () => { setExpReceipt(reader.result); showNotification("Fiş görseli başarıyla seçildi."); }; reader.readAsDataURL(file); };  const defaultFee = Number(data.defaultMonthlyFee \vert{}\vert{} 500);  const totalIncomeFromFees = data.apartments.reduce((acc, apt) => { let count = 0; MONTHS.forEach((_, idx) => { if (data.payments[`${apt.no}_${idx}`]) count++; }); return acc + (count * (apt.monthlyFee !== undefined ? Number(apt.monthlyFee) : defaultFee)); }, 0);  const totalIncomeFromExtras = (data.extraItems \vert{}\vert{} []).reduce((acc, item) => { let paidCount = 0; data.apartments.forEach(apt => { if (data.extraPayments?.[`${item.id}_${apt.no}`]) paidCount++; }); return acc + (paidCount * Number(item.amountPerApt \vert{}\vert{} 0)); }, 0);  const totalBalance = (data.previousYearBalance \vert{}\vert{} 0) + totalIncomeFromFees + totalIncomeFromExtras; const totalExpenses = data.expenses.reduce((acc, exp) => acc + Number(exp.amount \vert{}\vert{} 0), 0); const netBalance = totalBalance - totalExpenses;  if (loading) { return ( <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center text-white"> <RefreshCw className="w-10 h-10 animate-spin text-emerald-400 mb-4" /> <p className="text-lg font-medium">Yükleniyor...</p> </div> ); }  return ( <div className="min-h-screen bg-slate-100 text-slate-800 flex flex-col font-sans"> {/* Fiş Görseli Modal Önizleme */} {viewingImage && ( <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"> <div className="bg-white rounded-2xl max-w-2xl w-full p-4 relative shadow-2xl flex flex-col items-center"> <button onClick={() => setViewingImage(null)} className="absolute top-4 right-4 bg-slate-100 p-2 rounded-full"> <X className="w-5 h-5 text-slate-700" /> </button> <h3 className="text-base font-bold text-slate-900 mb-3">Fiş / Belge Görseli</h3> <div className="max-h-[70vh] overflow-auto w-full flex justify-center bg-slate-50 p-2 rounded-xl border"> <img src={viewingImage} alt="Fiş Görseli" className="max-w-full h-auto object-contain rounded-lg" /> </div> <button onClick={() => setViewingImage(null)} className="mt-4 bg-slate-900 text-white px-6 py-2 rounded-xl text-sm font-semibold">Kapat</button> </div> </div> )}  {/* Daire Düzenleme Modalı */} {editingApt && ( <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"> <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl"> <h3 className="text-lg font-bold text-slate-900 mb-4">Daire Bilgilerini Düzenle (No: {editingApt.no})</h3> <div className="space-y-4"> <div> <label className="block text-xs font-semibold uppercase mb-1">Daire Sahibi</label> <input type="text" value={editingApt.owner} onChange={(e) => setEditingApt({ ...editingApt, owner: e.target.value })} className="w-full px-4 py-2.5 border rounded-xl" /> </div> <div> <label className="block text-xs font-semibold uppercase mb-1">Telefon (Son 4 Hane)</label> <input type="text" maxLength="4" value={editingApt.phone} onChange={(e) => setEditingApt({ ...editingApt, phone: e.target.value })} className="w-full px-4 py-2.5 border rounded-xl font-mono" /> </div> <div> <label className="block text-xs font-semibold uppercase mb-1">Aylık Aidat (₺)</label> <input type="number" value={editingApt.monthlyFee} onChange={(e) => setEditingApt({ ...editingApt, monthlyFee: Number(e.target.value) })} className="w-full px-4 py-2.5 border rounded-xl font-semibold text-emerald-600" /> </div> <div className="flex gap-3 mt-6"> <button onClick={() => { const updated = data.apartments.map(a => a.id === editingApt.id ? editingApt : a); saveData({ ...data, apartments: updated }); setEditingApt(null); showNotification("Daire bilgileri güncellendi."); }} className="flex-1 bg-emerald-600 text-white font-semibold py-2.5 rounded-xl" > Kaydet </button> <button onClick={() => setEditingApt(null)} className="flex-1 bg-slate-200 text-slate-700 font-semibold py-2.5 rounded-xl" > İptal </button> </div> </div> </div> </div> )}  <header className="bg-slate-900 text-white shadow-md"> <div className="max-w-7xl mx-auto px-4 py-4 flex flex-col sm:flex-row justify-between items-center gap-4"> <div className="flex items-center gap-3"> <div className="bg-emerald-600 p-2.5 rounded-xl"><Building2 className="w-7 h-7 text-white" /></div> <div> <h1 className="text-xl font-bold">Çağ Trio Apartmanı C Blok</h1> <p className="text-xs text-slate-400">Yönetim ve Bilgilendirme Paneli</p> </div> </div> {session && ( <div className="flex items-center gap-3 bg-slate-800 px-4 py-2 rounded-xl border border-slate-700"> <span className="text-sm font-medium text-slate-300">{session.type === 'admin' ? '👑 Yönetici' : `🏠 Daire ${session.aptNo}`}</span>
+      showNotification(`Daire ${apt.no} sayfasına hoş geldiniz.`);
+    } else {
+      showNotification("Telefonun son 4 hanesi hatalı!", true);
+    }
+  };
+
+  const handleImageUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (file.size > 1024 * 1024 * 2) {
+      showNotification("Fiş görseli çok büyük (Maksimum 2MB olmalı).", true);
+      return;
+    }
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setExpReceipt(reader.result);
+      showNotification("Fiş görseli başarıyla seçildi.");
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const defaultFee = Number(data.defaultMonthlyFee || 500);
+
+  const totalIncomeFromFees = data.apartments.reduce((acc, apt) => {
+    let count = 0;
+    MONTHS.forEach((_, idx) => {
+      if (data.payments[`${apt.no}_${idx}`]) count++;
+    });
+    return acc + (count * (apt.monthlyFee !== undefined ? Number(apt.monthlyFee) : defaultFee));
+  }, 0);
+
+  const totalIncomeFromExtras = (data.extraItems || []).reduce((acc, item) => {
+    let paidCount = 0;
+    data.apartments.forEach(apt => {
+      if (data.extraPayments?.[`${item.id}_${apt.no}`]) paidCount++;
+    });
+    return acc + (paidCount * Number(item.amountPerApt || 0));
+  }, 0);
+
+  const totalBalance = (data.previousYearBalance || 0) + totalIncomeFromFees + totalIncomeFromExtras;
+  const totalExpenses = data.expenses.reduce((acc, exp) => acc + Number(exp.amount || 0), 0);
+  const netBalance = totalBalance - totalExpenses;
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center text-white">
+        <RefreshCw className="w-10 h-10 animate-spin text-emerald-400 mb-4" />
+        <p className="text-lg font-medium">Yükleniyor...</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-slate-100 text-slate-800 flex flex-col font-sans">
+      {viewingImage && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-2xl w-full p-4 relative shadow-2xl flex flex-col items-center">
+            <button onClick={() => setViewingImage(null)} className="absolute top-4 right-4 bg-slate-100 p-2 rounded-full">
+              <X className="w-5 h-5 text-slate-700" />
+            </button>
+            <h3 className="text-base font-bold text-slate-900 mb-3">Fiş / Belge Görseli</h3>
+            <div className="max-h-[70vh] overflow-auto w-full flex justify-center bg-slate-50 p-2 rounded-xl border">
+              <img src={viewingImage} alt="Fiş Görseli" className="max-w-full h-auto object-contain rounded-lg" />
+            </div>
+            <button onClick={() => setViewingImage(null)} className="mt-4 bg-slate-900 text-white px-6 py-2 rounded-xl text-sm font-semibold">Kapat</button>
+          </div>
+        </div>
+      )}
+
+      {editingApt && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl">
+            <h3 className="text-lg font-bold text-slate-900 mb-4">Daire Bilgilerini Düzenle (No: {editingApt.no})</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold uppercase mb-1">Daire Sahibi</label>
+                <input 
+                  type="text" 
+                  value={editingApt.owner} 
+                  onChange={(e) => setEditingApt({ ...editingApt, owner: e.target.value })} 
+                  className="w-full px-4 py-2.5 border rounded-xl" 
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold uppercase mb-1">Telefon (Son 4 Hane)</label>
+                <input 
+                  type="text" 
+                  maxLength="4" 
+                  value={editingApt.phone} 
+                  onChange={(e) => setEditingApt({ ...editingApt, phone: e.target.value })} 
+                  className="w-full px-4 py-2.5 border rounded-xl font-mono" 
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold uppercase mb-1">Aylık Aidat (₺)</label>
+                <input 
+                  type="number" 
+                  value={editingApt.monthlyFee} 
+                  onChange={(e) => setEditingApt({ ...editingApt, monthlyFee: Number(e.target.value) })} 
+                  className="w-full px-4 py-2.5 border rounded-xl font-semibold text-emerald-600" 
+                />
+              </div>
+              <div className="flex gap-3 mt-6">
+                <button 
+                  onClick={() => {
+                    const updated = data.apartments.map(a => a.id === editingApt.id ? editingApt : a);
+                    saveData({ ...data, apartments: updated });
+                    setEditingApt(null);
+                    showNotification("Daire bilgileri güncellendi.");
+                  }} 
+                  className="flex-1 bg-emerald-600 text-white font-semibold py-2.5 rounded-xl"
+                >
+                  Kaydet
+                </button>
+                <button 
+                  onClick={() => setEditingApt(null)} 
+                  className="flex-1 bg-slate-200 text-slate-700 font-semibold py-2.5 rounded-xl"
+                >
+                  İptal
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <header className="bg-slate-900 text-white shadow-md">
+        <div className="max-w-7xl mx-auto px-4 py-4 flex flex-col sm:flex-row justify-between items-center gap-4">
+          <div className="flex items-center gap-3">
+            <div className="bg-emerald-600 p-2.5 rounded-xl"><Building2 className="w-7 h-7 text-white" /></div>
+            <div>
+              <h1 className="text-xl font-bold">Çağ Trio Apartmanı C Blok</h1>
+              <p className="text-xs text-slate-400">Yönetim ve Bilgilendirme Paneli</p>
+            </div>
+          </div>
+          {session && (
+            <div className="flex items-center gap-3 bg-slate-800 px-4 py-2 rounded-xl border border-slate-700">
+              <span className="text-sm font-medium text-slate-300">{session.type === 'admin' ? '👑 Yönetici' : `🏠 Daire ${session.aptNo}`}</span>
               <button onClick={() => setSession(null)} className="bg-rose-600/20 text-rose-300 hover:bg-rose-600 hover:text-white px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1">
                 <LogOut className="w-3.5 h-3.5" /> Çıkış
               </button>
@@ -241,7 +377,28 @@ export default function App() {
               <button onClick={() => setActiveTab('extras')} className={`px-4 py-2.5 rounded-xl text-sm font-semibold ${activeTab === 'extras' ? 'bg-emerald-600 text-white' : 'text-slate-600'}`}>Ekstralar</button>
               <button onClick={() => setActiveTab('finances')} className={`px-4 py-2.5 rounded-xl text-sm font-semibold ${activeTab === 'finances' ? 'bg-emerald-600 text-white' : 'text-slate-600'}`}>Harcamalar & Fişler</button>
               <button onClick={() => setActiveTab('maintenance')} className={`px-4 py-2.5 rounded-xl text-sm font-semibold ${activeTab === 'maintenance' ? 'bg-emerald-600 text-white' : 'text-slate-600'}`}>Temizlik & Asansör</button>
-              <button onClick={() => setActiveTab('settings')} className={`px-4 py-2.5 rounded-xl text-sm font-semibold ${activeTab === 'settings' ? 'bg-emerald-600 text-white' : 'text-slate-600'}`}>Ayarlar</button> </div>  {activeTab === 'dashboard' && ( <div className="grid grid-cols-1 sm:grid-cols-5 gap-4"> <div className="bg-white p-5 rounded-2xl border"><p className="text-xs text-slate-400">Devir</p><h3 className="text-xl font-bold">{data.previousYearBalance} ₺</h3></div> <div className="bg-white p-5 rounded-2xl border"><p className="text-xs text-slate-400">Aidatlar</p><h3 className="text-xl font-bold text-emerald-600">{totalIncomeFromFees} ₺</h3></div> <div className="bg-white p-5 rounded-2xl border"><p className="text-xs text-slate-400">Ekstralar</p><h3 className="text-xl font-bold text-indigo-600">{totalIncomeFromExtras} ₺</h3></div> <div className="bg-white p-5 rounded-2xl border"><p className="text-xs text-slate-400">Harcamalar</p><h3 className="text-xl font-bold text-rose-600">{totalExpenses} ₺</h3></div> <div className="bg-white p-5 rounded-2xl border"><p className="text-xs text-slate-400">Net Kasa</p><h3 className="text-xl font-bold">{netBalance} ₺</h3></div> </div> )}  {activeTab === 'apartments' && ( <div className="space-y-6"> <div className="bg-white p-6 rounded-2xl border"> <h3 className="text-lg font-bold mb-4">Yeni Daire Ekle</h3> <div className="grid grid-cols-1 sm:grid-cols-5 gap-4"> <input type="text" placeholder="Daire No" value={newAptNo} onChange={(e) => setNewAptNo(e.target.value)} className="px-4 py-2.5 border rounded-xl" /> <input type="text" placeholder="Sahibi" value={newOwner} onChange={(e) => setNewOwner(e.target.value)} className="px-4 py-2.5 border rounded-xl" /> <input type="text" maxLength="4" placeholder="Tel 4 Hane" value={newPhone} onChange={(e) => setNewPhone(e.target.value)} className="px-4 py-2.5 border rounded-xl font-mono" /> <input type="number" placeholder={`Aidat (${defaultFee} ₺)`} value={newFee !== "" ? newFee : defaultFee} onChange={(e) => setNewFee(e.target.value)} className="px-4 py-2.5 border rounded-xl" />
+              <button onClick={() => setActiveTab('settings')} className={`px-4 py-2.5 rounded-xl text-sm font-semibold ${activeTab === 'settings' ? 'bg-emerald-600 text-white' : 'text-slate-600'}`}>Ayarlar</button>
+            </div>
+
+            {activeTab === 'dashboard' && (
+              <div className="grid grid-cols-1 sm:grid-cols-5 gap-4">
+                <div className="bg-white p-5 rounded-2xl border"><p className="text-xs text-slate-400">Devir</p><h3 className="text-xl font-bold">{data.previousYearBalance} ₺</h3></div>
+                <div className="bg-white p-5 rounded-2xl border"><p className="text-xs text-slate-400">Aidatlar</p><h3 className="text-xl font-bold text-emerald-600">{totalIncomeFromFees} ₺</h3></div>
+                <div className="bg-white p-5 rounded-2xl border"><p className="text-xs text-slate-400">Ekstralar</p><h3 className="text-xl font-bold text-indigo-600">{totalIncomeFromExtras} ₺</h3></div>
+                <div className="bg-white p-5 rounded-2xl border"><p className="text-xs text-slate-400">Harcamalar</p><h3 className="text-xl font-bold text-rose-600">{totalExpenses} ₺</h3></div>
+                <div className="bg-white p-5 rounded-2xl border"><p className="text-xs text-slate-400">Net Kasa</p><h3 className="text-xl font-bold">{netBalance} ₺</h3></div>
+              </div>
+            )}
+
+            {activeTab === 'apartments' && (
+              <div className="space-y-6">
+                <div className="bg-white p-6 rounded-2xl border">
+                  <h3 className="text-lg font-bold mb-4">Yeni Daire Ekle</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-5 gap-4">
+                    <input type="text" placeholder="Daire No" value={newAptNo} onChange={(e) => setNewAptNo(e.target.value)} className="px-4 py-2.5 border rounded-xl" />
+                    <input type="text" placeholder="Sahibi" value={newOwner} onChange={(e) => setNewOwner(e.target.value)} className="px-4 py-2.5 border rounded-xl" />
+                    <input type="text" maxLength="4" placeholder="Tel 4 Hane" value={newPhone} onChange={(e) => setNewPhone(e.target.value)} className="px-4 py-2.5 border rounded-xl font-mono" />
+                    <input type="number" placeholder={`Aidat (${defaultFee} ₺)`} value={newFee !== "" ? newFee : defaultFee} onChange={(e) => setNewFee(e.target.value)} className="px-4 py-2.5 border rounded-xl" />
                     <button onClick={() => {
                       if (!newAptNo || !newOwner || !newPhone) return showNotification("Alanları doldurun.", true);
                       const updated = [...data.apartments, { id: Date.now(), no: newAptNo, owner: newOwner, phone: newPhone, monthlyFee: newFee !== "" ? Number(newFee) : defaultFee }];
@@ -366,171 +523,4 @@ export default function App() {
                           <span>{expReceipt ? "Değiştir" : "Fotoğraf Seç"}</span>
                           <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
                         </label>
-                        {expReceipt && <button onClick={() => setExpReceipt("")} className="bg-rose-50 text-rose-600 px-3 py-2.5 rounded-xl text-xs font-bold">Kaldır</button>}
-                      </div>
-                    </div>
-
-                    <button onClick={() => {
-                      if (!expTitle || !expAmount) return showNotification("Açıklama ve tutar girin.", true);
-                      saveData({ ...data, expenses: [{ id: Date.now(), title: expTitle, amount: Number(expAmount), date: expDate, category: expCat, receiptImage: expReceipt }, ...data.expenses] });
-                      setExpTitle(""); setExpAmount(""); setExpReceipt("");
-                      showNotification("Harcama eklendi.");
-                    }} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3.5 rounded-xl shadow flex items-center justify-center gap-2">
-                      <Plus className="w-5 h-5" /> Harcamayı ve Fişi Kaydet
-                    </button>
-                  </div>
-                </div>
-
-                <div className="bg-white p-6 rounded-2xl border">
-                  <h3 className="text-lg font-bold mb-4">Harcama Geçmişi & Fişler</h3>
-                  <table className="w-full text-left text-sm">
-                    <thead>
-                      <tr className="border-b bg-slate-50">
-                        <th className="p-3">Tarih</th><th className="p-3">Kategori</th><th className="p-3">Açıklama</th><th className="p-3 text-center">Fiş</th><th className="p-3 text-right">Tutar</th><th className="p-3 text-right">Sil</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y">
-                      {data.expenses.map(exp => (
-                        <tr key={exp.id}>
-                          <td className="p-3 font-mono text-xs">{exp.date}</td>
-                          <td className="p-3"><span className="bg-slate-100 px-2.5 py-1 rounded text-xs">{exp.category}</span></td>
-                          <td className="p-3 font-medium">{exp.title}</td>
-                          <td className="p-3 text-center">
-                            {exp.receiptImage ? (
-                              <button onClick={() => setViewingImage(exp.receiptImage)} className="bg-blue-50 text-blue-600 px-2.5 py-1 rounded text-xs font-semibold inline-flex items-center gap-1">
-                                <ImageIcon className="w-3.5 h-3.5" /> Gör
-                              </button>
-                            ) : <span className="text-slate-300">-</span>}
-                          </td>
-                          <td className="p-3 text-right font-bold text-rose-600">-{exp.amount} ₺</td>
-                          <td className="p-3 text-right"><button onClick={() => saveData({ ...data, expenses: data.expenses.filter(e => e.id !== exp.id) })} className="text-rose-500"><Trash2 className="w-4 h-4" /></button></td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
-            {activeTab === 'maintenance' && (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div className="bg-white p-6 rounded-2xl border">
-                  <h3 className="text-lg font-bold mb-4">Temizlik Kayıtları & Arşiv</h3>
-                  <div className="space-y-3 bg-slate-50 p-4 rounded-xl mb-4">
-                    <input type="date" value={cleaningDate} onChange={(e) => setCleaningDate(e.target.value)} className="w-full px-3 py-2 bg-white border rounded" />
-                    <input type="text" placeholder="Temizliği Yapan" value={cleaningPerson} onChange={(e) => setCleaningPerson(e.target.value)} className="w-full px-3 py-2 bg-white border rounded" />
-                    <input type="text" placeholder="Not" value={cleaningNote} onChange={(e) => setCleaningNote(e.target.value)} className="w-full px-3 py-2 bg-white border rounded" />
-                    <button onClick={() => {
-                      if (!cleaningDate || !cleaningPerson) return showNotification("Tarih ve kişi girin.", true);
-                      saveData({ ...data, cleaningLogs: [{ id: Date.now(), date: cleaningDate, person: cleaningPerson, note: cleaningNote }, ...(data.cleaningLogs || [])] });
-                      setCleaningPerson(""); setCleaningNote("");
-                      showNotification("Temizlik eklendi.");
-                    }} className="w-full bg-emerald-600 text-white py-2 rounded text-sm font-semibold">Temizlik Ekle</button>
-                  </div>
-                  <div className="space-y-2 max-h-60 overflow-y-auto">
-                    {(data.cleaningLogs || []).map(l => (
-                      <div key={l.id} className="p-3 border rounded bg-white flex justify-between items-center text-sm">
-                        <div><span className="font-semibold">{l.person}</span>{l.note && <p className="text-xs text-slate-500">{l.note}</p>}</div>
-                        <div className="flex items-center gap-3">
-                          <span className="font-mono text-xs bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded">{l.date}</span>
-                          <button onClick={() => saveData({ ...data, cleaningLogs: data.cleaningLogs.filter(item => item.id !== l.id) })} className="text-rose-500"><Trash2 className="w-4 h-4" /></button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="bg-white p-6 rounded-2xl border">
-                  <h3 className="text-lg font-bold mb-4">Asansör Bakım Kayıtları & Arşiv</h3>
-                  <div className="space-y-3 bg-slate-50 p-4 rounded-xl mb-4">
-                    <input type="date" value={elevatorDate} onChange={(e) => setElevatorDate(e.target.value)} className="w-full px-3 py-2 bg-white border rounded" />
-                    <input type="text" placeholder="Bakım Firması" value={elevatorCompany} onChange={(e) => setElevatorCompany(e.target.value)} className="w-full px-3 py-2 bg-white border rounded" />
-                    <input type="text" placeholder="Not" value={elevatorNote} onChange={(e) => setElevatorNote(e.target.value)} className="w-full px-3 py-2 bg-white border rounded" />
-                    <button onClick={() => {
-                      if (!elevatorDate || !elevatorCompany) return showNotification("Tarih ve firma girin.", true);
-                      saveData({ ...data, elevatorLogs: [{ id: Date.now(), date: elevatorDate, company: elevatorCompany, note: elevatorNote }, ...(data.elevatorLogs || [])] });
-                      setElevatorCompany(""); setElevatorNote("");
-                      showNotification("Asansör bakımı eklendi.");
-                    }} className="w-full bg-blue-600 text-white py-2 rounded text-sm font-semibold">Asansör Bakımı Ekle</button>
-                  </div>
-                  <div className="space-y-2 max-h-60 overflow-y-auto">
-                    {(data.elevatorLogs || []).map(l => (
-                      <div key={l.id} className="p-3 border rounded bg-white flex justify-between items-center text-sm">
-                        <div><span className="font-semibold">{l.company}</span>{l.note && <p className="text-xs text-slate-500">{l.note}</p>}</div>
-                        <div className="flex items-center gap-3">
-                          <span className="font-mono text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded">{l.date}</span>
-                          <button onClick={() => saveData({ ...data, elevatorLogs: data.elevatorLogs.filter(item => item.id !== l.id) })} className="text-rose-500"><Trash2 className="w-4 h-4" /></button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {activeTab === 'settings' && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="bg-white p-6 rounded-2xl border flex flex-col justify-between">
-                  <div>
-                    <h3 className="text-lg font-bold mb-2">Varsayılan Aylık Aidat</h3>
-                    <input type="number" value={defaultFeeInput} onChange={(e) => setDefaultFeeInput(e.target.value)} className="w-full px-4 py-2.5 border rounded-xl font-bold text-lg text-emerald-700" />
-                  </div>
-                  <div className="mt-6 flex gap-3">
-                    <button onClick={() => {
-                      const val = Number(defaultFeeInput);
-                      saveData({ ...data, defaultMonthlyFee: val });
-                      showNotification("Kaydedildi.");
-                    }} className="flex-1 bg-emerald-600 text-white py-2.5 rounded-xl font-semibold">Kaydet</button>
-                    <button onClick={() => {
-                      const val = Number(defaultFeeInput);
-                      saveData({ ...data, defaultMonthlyFee: val, apartments: data.apartments.map(a => ({ ...a, monthlyFee: val })) });
-                      showNotification("Tüm dairelere uygulandı.");
-                    }} className="flex-1 bg-blue-600 text-white py-2.5 rounded-xl font-semibold">Tümüne Uygula</button>
-                  </div>
-                </div>
-
-                <div className="bg-white p-6 rounded-2xl border flex flex-col justify-between">
-                  <div>
-                    <h3 className="text-lg font-bold mb-2">Yönetici Parolası</h3>
-                    <input type="password" placeholder="Yeni Parola" value={newAdminPass} onChange={(e) => setNewAdminPass(e.target.value)} className="w-full px-4 py-2.5 border rounded-xl font-mono" />
-                  </div>
-                  <button onClick={() => {
-                    if (!newAdminPass) return showNotification("Parola girin.", true);
-                    saveData({ ...data, adminPassword: newAdminPass });
-                    setNewAdminPass("");
-                    showNotification("Parola güncellendi.");
-                  }} className="mt-6 w-full bg-slate-800 text-white py-2.5 rounded-xl font-semibold">Parolayı Güncelle</button>
-                </div>
-              </div>
-            )}
-          </div>
-        ) : (
-          (() => {
-            const currentApt = data.apartments.find(a => a.no === session.aptNo);
-            if (!currentApt) return <p>Daire bulunamadı.</p>;
-            const aptFee = currentApt.monthlyFee !== undefined ? Number(currentApt.monthlyFee) : defaultFee;
-            let paidMonthsCount = 0;
-            MONTHS.forEach((_, idx) => { if (data.payments[`${currentApt.no}_${idx}`]) paidMonthsCount++; });
-            const totalFeePaid = paidMonthsCount * aptFee;
-            const totalExtraPaid = (data.extraItems || []).reduce((acc, item) => data.extraPayments?.[`${item.id}_${currentApt.no}`] ? acc + Number(item.amountPerApt || 0) : acc, 0);
-
-            return (
-              <div className="space-y-6 max-w-5xl mx-auto">
-                <div className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white p-6 rounded-3xl flex justify-between items-center">
-                  <div>
-                    <span className="bg-white/20 text-xs px-3 py-1 rounded-full">Daire {currentApt.no}</span>
-                    <h2 className="text-2xl font-bold mt-2">Hoş Geldiniz, {currentApt.owner}</h2>
-                  </div>
-                  <div className="bg-white/10 p-4 rounded-2xl text-right">
-                    <p className="text-xs text-blue-200">Toplam Ödemeniz</p>
-                    <p className="text-2xl font-bold">{totalFeePaid + totalExtraPaid} ₺</p>
-                  </div>
-                </div>
-
-                <div className="bg-white p-6 rounded-2xl border">
-                  <h3 className="text-lg font-bold mb-4">Aylık Aidat Durumu</h3>
-                  <div className="grid grid-cols-2 sm:grid-cols-6 gap-3">
-                    {MONTHS.map((m, idx) => {
-                      const isPaid = !!data.payments[`${currentApt.no}_${idx}`];
-                      return (
-                        <div key={idx} className={`p-3 rounded-xl border flex flex-col items-center justify-center gap-1
+                        {expReceipt && <button onClick={() => setExpReceipt("")} className="bg-rose-50 text-rose-600 px-3 py-2.5 rounded
