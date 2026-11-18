@@ -593,4 +593,166 @@ export default function App() {
                   <h3 className="text-lg font-bold mb-4 flex items-center gap-2"><Wrench className="w-5 h-5 text-blue-600" /> Asansör Bakım Kayıtları (Arşiv)</h3>
                   <div className="space-y-3 bg-slate-50 p-4 rounded-xl mb-4">
                     <div className="grid grid-cols-2 gap-2">
-                      <input type="date" value={elevatorDate} onChange={(e) => setElevatorDate(e.target
+                      <input type="date" value={elevatorDate} onChange={(e) => setElevatorDate(e.target.value)} className="px-3 py-2 bg-white border rounded-xl text-sm" />
+                      <input type="text" placeholder="Bakım Firması" value={elevatorCompany} onChange={(e) => setElevatorCompany(e.target.value)} className="px-3 py-2 bg-white border rounded-xl text-sm" />
+                    </div>
+                    <input type="text" placeholder="Not (İsteğe bağlı)" value={elevatorNote} onChange={(e) => setElevatorNote(e.target.value)} className="w-full px-3 py-2 bg-white border rounded-xl text-sm" />
+                    <button onClick={() => {
+                      if (!elevatorDate || !elevatorCompany) return showNotification("Tarih ve firma girin.", true);
+                      saveData({ ...data, elevatorLogs: [{ id: Date.now(), date: elevatorDate, company: elevatorCompany, note: elevatorNote }, ...(data.elevatorLogs || [])] });
+                      setElevatorCompany(""); setElevatorNote("");
+                      showNotification("Asansör bakımı eklendi.");
+                    }} className="w-full bg-blue-600 text-white py-2 rounded-xl text-sm font-semibold">+ Asansör Bakım Kaydı Ekle</button>
+                  </div>
+                  <div className="space-y-2 max-h-60 overflow-y-auto">
+                    {(data.elevatorLogs || []).map(log => (
+                      <div key={log.id} className="p-3 rounded-xl border bg-white flex justify-between items-center text-sm">
+                        <div>
+                          <span className="font-mono text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded mr-2">{log.date}</span>
+                          <span className="font-semibold">{log.company}</span>
+                          {log.note && <p className="text-xs text-slate-500 mt-0.5">{log.note}</p>}
+                        </div>
+                        <button onClick={() => saveData({ ...data, elevatorLogs: data.elevatorLogs.filter(l => l.id !== log.id) })} className="text-rose-400"><Trash2 className="w-4 h-4" /></button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'settings' && (
+              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 max-w-xl">
+                <h3 className="text-lg font-bold mb-2">Yönetici Parola Değiştirme</h3>
+                <div className="space-y-4">
+                  <input type="password" placeholder="Yeni Parola" value={newAdminPass} onChange={(e) => setNewAdminPass(e.target.value)} className="w-full px-4 py-2.5 bg-slate-50 border rounded-xl font-mono" />
+                  <button onClick={() => {
+                    if (!newAdminPass) return showNotification("Parola girin.", true);
+                    saveData({ ...data, adminPassword: newAdminPass });
+                    setNewAdminPass("");
+                    showNotification("Parola güncellendi.");
+                  }} className="bg-emerald-600 text-white font-semibold px-6 py-3 rounded-xl">Parolayı Güncelle</button>
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
+          (() => {
+            const currentApt = data.apartments.find(a => a.no === session.aptNo);
+            if (!currentApt) return <p>Daire bulunamadı.</p>;
+
+            let paidMonthsCount = 0;
+            MONTHS.forEach((_, idx) => { if (data.payments[`${currentApt.no}_${idx}`]) paidMonthsCount++; });
+            const totalFeePaid = paidMonthsCount * (currentApt.monthlyFee || 500);
+
+            const totalExtraPaid = (data.extraItems || []).reduce((acc, item) => {
+              if (data.extraPayments?.[`${item.id}_${currentApt.no}`]) return acc + Number(item.amountPerApt || 0);
+              return acc;
+            }, 0);
+
+            return (
+              <div className="space-y-6 max-w-5xl mx-auto">
+                <div className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white p-6 sm:p-8 rounded-3xl shadow-xl flex justify-between items-center">
+                  <div>
+                    <span className="bg-white/20 text-xs font-semibold px-3 py-1 rounded-full">Daire {currentApt.no} Sakini</span>
+                    <h2 className="text-2xl sm:text-3xl font-bold mt-2">Hoş Geldiniz, {currentApt.owner}</h2>
+                  </div>
+                  <div className="bg-white/10 p-4 rounded-2xl text-right">
+                    <p className="text-xs text-blue-200">Toplam Ödemeniz</p>
+                    <p className="text-2xl font-bold">{totalFeePaid + totalExtraPaid} ₺</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                  <div className="bg-white p-5 rounded-2xl shadow-sm border"><p className="text-xs text-slate-400">Aylık Aidat</p><h3 className="text-xl font-bold">{currentApt.monthlyFee || 500} ₺</h3></div>
+                  <div className="bg-white p-5 rounded-2xl shadow-sm border"><p className="text-xs text-slate-400">Ödenen Aidat</p><h3 className="text-xl font-bold text-emerald-600">{totalFeePaid} ₺</h3></div>
+                  <div className="bg-white p-5 rounded-2xl shadow-sm border"><p className="text-xs text-slate-400">Ekstra Ödemeler</p><h3 className="text-xl font-bold text-indigo-600">{totalExtraPaid} ₺</h3></div>
+                  <div className="bg-white p-5 rounded-2xl shadow-sm border"><p className="text-xs text-slate-400">Apartman Kasa</p><h3 className="text-xl font-bold">{netBalance} ₺</h3></div>
+                </div>
+
+                <div className="bg-white p-6 rounded-2xl shadow-sm border">
+                  <h3 className="text-lg font-bold mb-4">Aylık Aidat Ödeme Durumu</h3>
+                  <div className="grid grid-cols-2 sm:grid-cols-6 gap-3">
+                    {MONTHS.map((m, idx) => {
+                      const isPaid = !!data.payments[`${currentApt.no}_${idx}`];
+                      return (
+                        <div key={idx} className={`p-3 rounded-xl border flex flex-col items-center justify-center gap-1 ${isPaid ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-slate-50 border-slate-200 text-slate-500'}`}>
+                          <span className="text-xs font-semibold">{m}</span>
+                          <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${isPaid ? 'bg-emerald-600 text-white' : 'bg-slate-200'}`}>{isPaid ? 'Ödendi' : 'Bekliyor'}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {(data.extraItems || []).length > 0 && (
+                  <div className="bg-white p-6 rounded-2xl shadow-sm border">
+                    <h3 className="text-lg font-bold mb-4 flex items-center gap-2"><Layers className="w-5 h-5 text-indigo-600" /> Ekstra / Demirbaş Ödemeleriniz</h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {data.extraItems.map(item => {
+                        const isPaid = !!data.extraPayments?.[`${item.id}_${currentApt.no}`];
+                        return (
+                          <div key={item.id} className={`p-4 rounded-xl border flex justify-between items-center ${isPaid ? 'bg-emerald-50/60 border-emerald-200' : 'bg-amber-50/50 border-amber-200'}`}>
+                            <div>
+                              <p className="font-bold text-sm">{item.title}</p>
+                              <p className="text-xs text-slate-500">Tutar: <strong>{item.amountPerApt} ₺</strong></p>
+                            </div>
+                            <span className={`text-xs font-bold px-3 py-1.5 rounded-full ${isPaid ? 'bg-emerald-600 text-white' : 'bg-amber-500 text-white'}`}>{isPaid ? 'Ödendi' : 'Ödenmedi'}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="bg-white p-6 rounded-2xl shadow-sm border">
+                    <h3 className="text-base font-bold mb-3 flex items-center gap-2"><Sparkles className="w-5 h-5 text-emerald-600" /> Temizlik Geçmişi</h3>
+                    <div className="space-y-2 max-h-48 overflow-y-auto">
+                      {(data.cleaningLogs || []).map(log => (
+                        <div key={log.id} className="p-3 rounded-xl bg-slate-50 border text-sm flex justify-between">
+                          <div><span className="font-semibold">{log.person}</span>{log.note && <p className="text-xs text-slate-500">{log.note}</p>}</div>
+                          <span className="font-mono text-xs bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded h-fit">{log.date}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="bg-white p-6 rounded-2xl shadow-sm border">
+                    <h3 className="text-base font-bold mb-3 flex items-center gap-2"><Wrench className="w-5 h-5 text-blue-600" /> Asansör Bakım Geçmişi</h3>
+                    <div className="space-y-2 max-h-48 overflow-y-auto">
+                      {(data.elevatorLogs || []).map(log => (
+                        <div key={log.id} className="p-3 rounded-xl bg-slate-50 border text-sm flex justify-between">
+                          <div><span className="font-semibold">{log.company}</span>{log.note && <p className="text-xs text-slate-500">{log.note}</p>}</div>
+                          <span className="font-mono text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded h-fit">{log.date}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-white p-6 rounded-2xl shadow-sm border max-w-md">
+                  <h3 className="text-lg font-bold mb-2 flex items-center gap-2"><Phone className="w-5 h-5 text-blue-600" /> Giriş Telefonunu Güncelle</h3>
+                  <div className="space-y-3">
+                    <input type="password" maxLength="4" placeholder="Yeni Son 4 Hane" value={residentNewPhone} onChange={(e) => setResidentNewPhone(e.target.value)} className="w-full px-4 py-2.5 bg-slate-50 border rounded-xl font-mono" />
+                    <button onClick={() => {
+                      if (!residentNewPhone || residentNewPhone.length !== 4) return showNotification("4 haneli olmalı.", true);
+                      const updated = data.apartments.map(a => a.no === currentApt.no ? { ...a, phone: residentNewPhone } : a);
+                      saveData({ ...data, apartments: updated });
+                      setResidentNewPhone("");
+                      showNotification("Telefon son 4 haneniz güncellendi.");
+                    }} className="bg-blue-600 text-white font-semibold px-6 py-2.5 rounded-xl text-sm">Güncelle</button>
+                  </div>
+                </div>
+              </div>
+            );
+          })()
+        )}
+      </main>
+
+      <footer className="bg-white border-t py-4 mt-8">
+        <div className="max-w-7xl mx-auto px-4 text-center text-xs text-slate-500">
+          © 2026 Çağ Trio Apartmanı C Blok Yönetim Sistemi
+        </div>
+      </footer>
+    </div>
+  );
+}
