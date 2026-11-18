@@ -10,13 +10,23 @@ import {
 // --- FIREBASE BAĞLANTI AYARLARI ---
 // Kendi Firebase projenizin bilgilerini buraya girebilirsiniz
 const firebaseConfig = {
-  apiKey: "AIzaSyDummyKeyForDemoModeOnly12345",
+
+  apiKey: "AIzaSyCyjXcizCsT3hQDR2oCDGxbr6f1kA_0Mrc",
+
   authDomain: "cagtrio-cblok.firebaseapp.com",
+
   projectId: "cagtrio-cblok",
-  storageBucket: "cagtrio-cblok.appspot.com",
-  messagingSenderId: "123456789",
-  appId: "1:123456789:web:abcdef"
+
+  storageBucket: "cagtrio-cblok.firebasestorage.app",
+
+  messagingSenderId: "777852610089",
+
+  appId: "1:777852610089:web:98650211b4515aaffc5e38",
+
+  measurementId: "G-JR23LEXGRX"
+
 };
+
 
 let db = null;
 let isFirebaseConnected = false;
