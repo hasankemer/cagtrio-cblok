@@ -4,7 +4,7 @@ import { getFirestore, doc, setDoc, onSnapshot } from 'firebase/firestore';
 import { 
   Building2, Users, Wallet, Wrench, Shield, Key, Plus, Trash2, 
   CheckCircle2, AlertCircle, Phone, ArrowUpRight, 
-  Sparkles, RefreshCw, LogOut, FileText, Layers, DollarSign, Image as ImageIcon, X, Edit3, Eye, Activity, Bell, Printer, MessageSquarePlus
+  Sparkles, RefreshCw, LogOut, FileText, Layers, DollarSign, Image as ImageIcon, X, Edit3, Eye, Activity, Bell, Printer, MessageSquarePlus, Lock
 } from 'lucide-react';
 
 const firebaseConfig = {
@@ -33,10 +33,10 @@ const INITIAL_DATA = {
   managerApartmentNo: "",
   managerHistory: [],
   apartments: [
-    { id: 1, no: "1", owner: "Ahmet Yılmaz", phone: "1234", monthlyFee: 500 },
-    { id: 2, no: "2", owner: "Ayşe Demir", phone: "5678", monthlyFee: 500 },
-    { id: 3, no: "3", owner: "Mehmet Kaya", phone: "9012", monthlyFee: 500 },
-    { id: 4, no: "4", owner: "Fatma Şahin", phone: "3456", monthlyFee: 500 },
+    { id: 1, no: "1", owner: "Ahmet Yılmaz", phone: "1234", monthlyFee: 500, passwordChanged: false },
+    { id: 2, no: "2", owner: "Ayşe Demir", phone: "5678", monthlyFee: 500, passwordChanged: false },
+    { id: 3, no: "3", owner: "Mehmet Kaya", phone: "9012", monthlyFee: 500, passwordChanged: false },
+    { id: 4, no: "4", owner: "Fatma Şahin", phone: "3456", monthlyFee: 500, passwordChanged: false },
   ],
   previousYearBalance: 1250,
   payments: {},
@@ -74,6 +74,8 @@ const formatMoney = (val) => {
   });
 };
 
+const isFourDigitNumber = (val) => /^\d{4}$/.test(String(val || "").trim());
+
 export default function App() {
   const [data, setData] = useState(INITIAL_DATA);
   const [loading, setLoading] = useState(true);
@@ -82,7 +84,7 @@ export default function App() {
   const [successMsg, setSuccessMsg] = useState("");
 
   const [selectedAptNo, setSelectedAptNo] = useState("");
-  const [loginPhone, setLoginPhone] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
   const [adminPassInput, setAdminPassInput] = useState("");
   const [activeTab, setActiveTab] = useState("dashboard");
   const currentYear = new Date().getFullYear();
@@ -120,7 +122,7 @@ export default function App() {
   const [newAdminPass, setNewAdminPass] = useState("");
   const [defaultFeeInput, setDefaultFeeInput] = useState("");
   const [previousYearBalanceInput, setPreviousYearBalanceInput] = useState(String(INITIAL_DATA.previousYearBalance));
-  const [residentNewPhone, setResidentNewPhone] = useState("");
+  const [residentNewPassword, setResidentNewPassword] = useState("");
 
   const [announcementInput, setAnnouncementInput] = useState("");
   const [newRequestText, setNewRequestText] = useState("");
@@ -133,6 +135,10 @@ export default function App() {
       defaultMonthlyFee: raw.defaultMonthlyFee !== undefined ? round2(raw.defaultMonthlyFee) : 500,
       managerApartmentNo: raw.managerApartmentNo || "",
       managerHistory: Array.isArray(raw.managerHistory) ? raw.managerHistory : [],
+      apartments: (raw.apartments || []).map(a => ({
+        ...a,
+        passwordChanged: Boolean(a.passwordChanged)
+      })),
       payments: (() => {
         const oldPayments = raw.payments || {};
         const migrated = { ...oldPayments };
@@ -232,7 +238,7 @@ export default function App() {
       showNotification("Lütfen bir daire seçin.", true);
       return;
     }
-    if (apt.phone === loginPhone.trim()) {
+    if (apt.phone === loginPassword.trim()) {
       const now = new Date();
       const timestamp = now.toLocaleString('tr-TR', {
         day: '2-digit',
@@ -250,9 +256,10 @@ export default function App() {
       const updatedLogs = [newLog, ...(data.loginLogs || [])].slice(0, 500);
       saveData({ ...data, loginLogs: updatedLogs });
       setSession({ type: 'resident', aptNo: apt.no });
+      setLoginPassword("");
       showNotification(`Daire ${apt.no} sayfasına hoş geldiniz.`);
     } else {
-      showNotification("Telefonun son 4 hanesi hatalı!", true);
+      showNotification("Parola hatalı!", true);
     }
   };
 
@@ -413,14 +420,16 @@ export default function App() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold uppercase mb-1">Telefon (Son 4 Hane)</label>
+                <label className="block text-xs font-semibold uppercase mb-1">Parola (4 Basamaklı Sayı)</label>
                 <input 
                   type="text" 
+                  inputMode="numeric"
                   maxLength="4" 
                   value={editingApt.phone} 
-                  onChange={(e) => setEditingApt({ ...editingApt, phone: e.target.value })} 
+                  onChange={(e) => setEditingApt({ ...editingApt, phone: e.target.value.replace(/\D/g, '').slice(0, 4) })} 
                   className="w-full px-4 py-2.5 border rounded-xl font-mono" 
                 />
+                <p className="text-[11px] text-slate-500 mt-1">İlk giriş için telefonun son 4 hanesini girin (4 basamaklı sayı).</p>
               </div>
               <div>
                 <label className="block text-xs font-semibold uppercase mb-1">Aylık Aidat (₺)</label>
@@ -435,6 +444,9 @@ export default function App() {
               <div className="flex gap-3 mt-6">
                 <button 
                   onClick={() => {
+                    if (!isFourDigitNumber(editingApt.phone)) {
+                      return showNotification("Parola 4 basamaklı bir sayı olmalıdır.", true);
+                    }
                     const updated = data.apartments.map(a => a.id === editingApt.id ? { ...editingApt, monthlyFee: round2(editingApt.monthlyFee) } : a);
                     saveData({ ...data, apartments: updated });
                     setEditingApt(null);
@@ -497,8 +509,18 @@ export default function App() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold uppercase mb-1.5">Telefon Son 4 Hane</label>
-                  <input type="password" maxLength="4" placeholder="1234" value={loginPhone} onChange={(e) => setLoginPhone(e.target.value)} className="w-full px-4 py-2.5 bg-slate-50 border rounded-xl font-mono" required />
+                  <label className="block text-xs font-semibold uppercase mb-1.5">Parola</label>
+                  <input 
+                    type="password" 
+                    inputMode="numeric"
+                    maxLength="4" 
+                    placeholder="••••" 
+                    value={loginPassword} 
+                    onChange={(e) => setLoginPassword(e.target.value.replace(/\D/g, '').slice(0, 4))} 
+                    className="w-full px-4 py-2.5 bg-slate-50 border rounded-xl font-mono" 
+                    required 
+                  />
+                  <p className="text-[11px] text-slate-500 mt-1.5">İlk girişinizde telefon numaranızın son 4 hanesini girin.</p>
                 </div>
                 <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-xl">Giriş Yap</button>
               </form>
@@ -697,11 +719,20 @@ export default function App() {
                   <div className="grid grid-cols-1 sm:grid-cols-5 gap-4">
                     <input type="text" placeholder="Daire No" value={newAptNo} onChange={(e) => setNewAptNo(e.target.value)} className="px-4 py-2.5 border rounded-xl" />
                     <input type="text" placeholder="Sahibi" value={newOwner} onChange={(e) => setNewOwner(e.target.value)} className="px-4 py-2.5 border rounded-xl" />
-                    <input type="text" maxLength="4" placeholder="Tel 4 Hane" value={newPhone} onChange={(e) => setNewPhone(e.target.value)} className="px-4 py-2.5 border rounded-xl font-mono" />
+                    <input 
+                      type="text" 
+                      inputMode="numeric"
+                      maxLength="4" 
+                      placeholder="İlk Parola (Tel 4 Hane)" 
+                      value={newPhone} 
+                      onChange={(e) => setNewPhone(e.target.value.replace(/\D/g, '').slice(0, 4))} 
+                      className="px-4 py-2.5 border rounded-xl font-mono" 
+                    />
                     <input type="number" step="0.01" placeholder={`Aidat (${formatMoney(defaultFee)} ₺)`} value={newFee !== "" ? newFee : defaultFee} onChange={(e) => setNewFee(e.target.value)} className="px-4 py-2.5 border rounded-xl" />
                     <button onClick={() => {
                       if (!newAptNo || !newOwner || !newPhone) return showNotification("Alanları doldurun.", true);
-                      const updated = [...data.apartments, { id: Date.now(), no: newAptNo, owner: newOwner, phone: newPhone, monthlyFee: newFee !== "" ? round2(newFee) : defaultFee }];
+                      if (!isFourDigitNumber(newPhone)) return showNotification("İlk parola 4 basamaklı bir sayı olmalıdır.", true);
+                      const updated = [...data.apartments, { id: Date.now(), no: newAptNo, owner: newOwner, phone: newPhone, monthlyFee: newFee !== "" ? round2(newFee) : defaultFee, passwordChanged: false }];
                       saveData({ ...data, apartments: updated });
                       setNewAptNo(""); setNewOwner(""); setNewPhone(""); setNewFee("");
                       showNotification("Daire eklendi.");
@@ -721,7 +752,7 @@ export default function App() {
                   <table className="w-full text-left text-sm">
                     <thead>
                       <tr className="border-b bg-slate-50">
-                        <th className="p-3">Daire</th><th className="p-3">Sahibi</th><th className="p-3">Tel</th><th className="p-3">Aidat</th>
+                        <th className="p-3">Daire</th><th className="p-3">Sahibi</th><th className="p-3">Parola</th><th className="p-3">Aidat</th>
                         {MONTHS.map((m, i) => <th key={i} className="p-2 text-center">{m}</th>)}
                         <th className="p-3 text-center">Düzenle</th>
                         <th className="p-3 text-right">Sil</th>
@@ -1125,9 +1156,54 @@ export default function App() {
             const lastTwoCleanings = [...(data.cleaningLogs || [])].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 2);
             const lastTwoElevators = [...(data.elevatorLogs || [])].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 2);
             const lastFiveExpenses = [...(data.expenses || [])].slice(0, 5);
+            const isFirstLogin = !currentApt.passwordChanged;
 
             return (
               <div className="space-y-6 max-w-5xl mx-auto">
+                {isFirstLogin && (
+                  <div className="bg-rose-50 border-2 border-rose-400 text-rose-950 p-5 rounded-2xl shadow-md">
+                    <div className="flex items-start gap-3">
+                      <Lock className="w-6 h-6 text-rose-600 shrink-0 mt-0.5" />
+                      <div className="flex-1">
+                        <h4 className="font-bold text-base text-rose-900">İlk Giriş Güvenlik Uyarısı: Parolanızı Değiştirin</h4>
+                        <p className="text-xs text-rose-800 mt-1">
+                          Sisteme ilk defa telefon numaranızın son 4 hanesiyle giriş yaptınız. Güvenliğiniz için lütfen kendinize özel <strong>4 basamaklı bir sayı</strong> belirleyerek parolanızı güncelleyin.
+                        </p>
+                        <div className="mt-3 flex flex-col sm:flex-row gap-2 max-w-md">
+                          <input
+                            type="password"
+                            inputMode="numeric"
+                            maxLength="4"
+                            placeholder="4 basamaklı sayı girin"
+                            value={residentNewPassword}
+                            onChange={(e) => setResidentNewPassword(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                            className="flex-1 px-4 py-2 bg-white border border-rose-300 rounded-xl font-mono text-sm"
+                          />
+                          <button
+                            onClick={() => {
+                              if (!isFourDigitNumber(residentNewPassword)) {
+                                return showNotification("Lütfen 4 basamaklı bir sayı girin.", true);
+                              }
+                              saveData({
+                                ...data,
+                                apartments: data.apartments.map(a =>
+                                  a.no === currentApt.no ? { ...a, phone: residentNewPassword, passwordChanged: true } : a
+                                )
+                              });
+                              setResidentNewPassword("");
+                              showNotification("Yeni parolanız başarıyla kaydedildi.");
+                            }}
+                            className="bg-rose-600 hover:bg-rose-700 text-white font-semibold px-5 py-2 rounded-xl text-sm"
+                          >
+                            Parolayı Kaydet
+                          </button>
+                        </div>
+                        <p className="text-[11px] font-semibold text-rose-700 mt-1.5">* Uyarı: Parola alanına 4 basamaklı sayı girin (Örn: 1453).</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {data.announcement && (
                   <div className="bg-amber-50 border-l-4 border-amber-500 text-amber-900 p-4 rounded-2xl shadow-sm flex items-start gap-3">
                     <Bell className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
@@ -1319,15 +1395,27 @@ export default function App() {
                 </div>
 
                 <div className="bg-white p-6 rounded-2xl border max-w-md">
-                  <h3 className="text-lg font-bold mb-2">Telefon Son 4 Hane Güncelle</h3>
+                  <h3 className="text-lg font-bold mb-1">Parola Değiştir</h3>
+                  <p className="text-xs text-slate-500 mb-3">Yeni parolanızı belirlemek için 4 basamaklı sayı girin.</p>
                   <div className="space-y-3">
-                    <input type="password" maxLength="4" placeholder="Yeni 4 Hane" value={residentNewPhone} onChange={(e) => setResidentNewPhone(e.target.value)} className="w-full px-4 py-2.5 border rounded-xl font-mono" />
+                    <input 
+                      type="password" 
+                      inputMode="numeric"
+                      maxLength="4" 
+                      placeholder="4 basamaklı sayı girin" 
+                      value={residentNewPassword} 
+                      onChange={(e) => setResidentNewPassword(e.target.value.replace(/\D/g, '').slice(0, 4))} 
+                      className="w-full px-4 py-2.5 border rounded-xl font-mono" 
+                    />
                     <button onClick={() => {
-                      if (!residentNewPhone || residentNewPhone.length !== 4) return showNotification("4 haneli olmalı.", true);
-                      saveData({ ...data, apartments: data.apartments.map(a => a.no === currentApt.no ? { ...a, phone: residentNewPhone } : a) });
-                      setResidentNewPhone("");
-                      showNotification("Telefon güncellendi.");
-                    }} className="bg-blue-600 text-white font-semibold px-6 py-2.5 rounded-xl text-sm">Güncelle</button>
+                      if (!isFourDigitNumber(residentNewPassword)) return showNotification("Lütfen 4 basamaklı bir sayı girin.", true);
+                      saveData({ 
+                        ...data, 
+                        apartments: data.apartments.map(a => a.no === currentApt.no ? { ...a, phone: residentNewPassword, passwordChanged: true } : a) 
+                      });
+                      setResidentNewPassword("");
+                      showNotification("Parolanız güncellendi.");
+                    }} className="bg-blue-600 text-white font-semibold px-6 py-2.5 rounded-xl text-sm">Parolayı Güncelle</button>
                   </div>
                 </div>
               </div>
