@@ -4,7 +4,7 @@ import { getFirestore, doc, setDoc, onSnapshot } from 'firebase/firestore';
 import { 
   Building2, Users, Wallet, Wrench, Shield, Key, Plus, Trash2, 
   CheckCircle2, AlertCircle, Phone, ArrowUpRight, 
-  Sparkles, RefreshCw, LogOut, FileText, Layers, DollarSign, Image as ImageIcon, X, Edit3, Eye
+  Sparkles, RefreshCw, LogOut, FileText, Layers, DollarSign, Image as ImageIcon, X, Edit3, Eye, Activity
 } from 'lucide-react';
 
 const firebaseConfig = {
@@ -48,7 +48,8 @@ const INITIAL_DATA = {
     { id: 1, title: "Ocak Ayı Elektrik Faturası", amount: 450, date: "2026-01-15", category: "Elektrik", receiptImage: "" }
   ],
   cleaningLogs: [],
-  elevatorLogs: []
+  elevatorLogs: [],
+  loginLogs: []
 };
 
 const MONTHS = [
@@ -123,7 +124,8 @@ export default function App() {
       extraPayments: raw.extraPayments || {},
       expenses: (raw.expenses || []).map(e => ({ ...e, receiptImage: e.receiptImage || "" })),
       cleaningLogs: raw.cleaningLogs || [],
-      elevatorLogs: raw.elevatorLogs || []
+      elevatorLogs: raw.elevatorLogs || [],
+      loginLogs: Array.isArray(raw.loginLogs) ? raw.loginLogs : []
     });
 
     if (!db || !isFirebaseConnected) {
@@ -204,6 +206,22 @@ export default function App() {
       return;
     }
     if (apt.phone === loginPhone.trim()) {
+      const now = new Date();
+      const timestamp = now.toLocaleString('tr-TR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+      const newLog = {
+        id: Date.now(),
+        aptNo: apt.no,
+        owner: apt.owner,
+        timestamp
+      };
+      const updatedLogs = [newLog, ...(data.loginLogs || [])].slice(0, 500);
+      saveData({ ...data, loginLogs: updatedLogs });
       setSession({ type: 'resident', aptNo: apt.no });
       showNotification(`Daire ${apt.no} sayfasına hoş geldiniz.`);
     } else {
@@ -263,6 +281,16 @@ export default function App() {
   const totalExpenses = data.expenses.reduce((acc, exp) => acc + Number(exp.amount || 0), 0);
   const netBalance = totalBalance - totalExpenses;
 
+  const loginStatsByApt = data.apartments.map(apt => {
+    const logs = (data.loginLogs || []).filter(l => String(l.aptNo) === String(apt.no));
+    return {
+      aptNo: apt.no,
+      owner: apt.owner,
+      count: logs.length,
+      lastVisit: logs.length > 0 ? logs[0].timestamp : "Henüz giriş yok"
+    };
+  });
+
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center text-white">
@@ -289,7 +317,6 @@ export default function App() {
         </div>
       )}
 
-      {/* Tüm Harcamalar Modal Penceresi */}
       {showAllExpensesModal && (
         <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-3xl w-full p-6 relative shadow-2xl flex flex-col max-h-[85vh]">
@@ -462,16 +489,112 @@ export default function App() {
               <button onClick={() => setActiveTab('extras')} className={`px-4 py-2.5 rounded-xl text-sm font-semibold ${activeTab === 'extras' ? 'bg-emerald-600 text-white' : 'text-slate-600'}`}>Ekstralar</button>
               <button onClick={() => setActiveTab('finances')} className={`px-4 py-2.5 rounded-xl text-sm font-semibold ${activeTab === 'finances' ? 'bg-emerald-600 text-white' : 'text-slate-600'}`}>Harcamalar & Fişler</button>
               <button onClick={() => setActiveTab('maintenance')} className={`px-4 py-2.5 rounded-xl text-sm font-semibold ${activeTab === 'maintenance' ? 'bg-emerald-600 text-white' : 'text-slate-600'}`}>Temizlik & Asansör</button>
+              <button onClick={() => setActiveTab('visits')} className={`px-4 py-2.5 rounded-xl text-sm font-semibold flex items-center gap-1.5 ${activeTab === 'visits' ? 'bg-emerald-600 text-white' : 'text-slate-600'}`}>
+                <Activity className="w-4 h-4" /> Ziyaret Kayıtları ({(data.loginLogs || []).length})
+              </button>
               <button onClick={() => setActiveTab('settings')} className={`px-4 py-2.5 rounded-xl text-sm font-semibold ${activeTab === 'settings' ? 'bg-emerald-600 text-white' : 'text-slate-600'}`}>Ayarlar</button>
             </div>
 
             {activeTab === 'dashboard' && (
-              <div className="grid grid-cols-1 sm:grid-cols-5 gap-4">
-                <div className="bg-white p-5 rounded-2xl border"><p className="text-xs text-slate-400">Devir</p><h3 className="text-xl font-bold">{data.previousYearBalance} ₺</h3></div>
-                <div className="bg-white p-5 rounded-2xl border"><p className="text-xs text-slate-400">Aidatlar</p><h3 className="text-xl font-bold text-emerald-600">{totalIncomeFromFees} ₺</h3></div>
-                <div className="bg-white p-5 rounded-2xl border"><p className="text-xs text-slate-400">Ekstralar</p><h3 className="text-xl font-bold text-indigo-600">{totalIncomeFromExtras} ₺</h3></div>
-                <div className="bg-white p-5 rounded-2xl border"><p className="text-xs text-slate-400">Harcamalar</p><h3 className="text-xl font-bold text-rose-600">{totalExpenses} ₺</h3></div>
-                <div className="bg-white p-5 rounded-2xl border"><p className="text-xs text-slate-400">Net Kasa</p><h3 className="text-xl font-bold">{netBalance} ₺</h3></div>
+              <div className="space-y-6">
+                <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+                  <div className="bg-white p-5 rounded-2xl border"><p className="text-xs text-slate-400">Devir</p><h3 className="text-xl font-bold">{data.previousYearBalance} ₺</h3></div>
+                  <div className="bg-white p-5 rounded-2xl border"><p className="text-xs text-slate-400">Aidatlar</p><h3 className="text-xl font-bold text-emerald-600">{totalIncomeFromFees} ₺</h3></div>
+                  <div className="bg-white p-5 rounded-2xl border"><p className="text-xs text-slate-400">Ekstralar</p><h3 className="text-xl font-bold text-indigo-600">{totalIncomeFromExtras} ₺</h3></div>
+                  <div className="bg-white p-5 rounded-2xl border"><p className="text-xs text-slate-400">Harcamalar</p><h3 className="text-xl font-bold text-rose-600">{totalExpenses} ₺</h3></div>
+                  <div className="bg-white p-5 rounded-2xl border"><p className="text-xs text-slate-400">Net Kasa</p><h3 className="text-xl font-bold">{netBalance} ₺</h3></div>
+                  <div onClick={() => setActiveTab('visits')} className="bg-blue-50/70 hover:bg-blue-100/70 transition cursor-pointer p-5 rounded-2xl border border-blue-200">
+                    <p className="text-xs text-blue-600 font-semibold">Toplam Sakin Girişi</p>
+                    <h3 className="text-xl font-bold text-blue-900">{(data.loginLogs || []).length} Kez</h3>
+                  </div>
+                </div>
+
+                <div className="bg-white p-6 rounded-2xl border">
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-lg font-bold flex items-center gap-2"><Activity className="w-5 h-5 text-blue-600" /> Daire Bazlı Sisteme Giriş Sayıları</h3>
+                    <button onClick={() => setActiveTab('visits')} className="text-xs text-blue-600 font-semibold hover:underline">Tüm Kayıtları Gör →</button>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3">
+                    {loginStatsByApt.map(stat => (
+                      <div key={stat.aptNo} className="p-3 rounded-xl border bg-slate-50 flex flex-col justify-between">
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="font-bold text-xs text-slate-700">Daire {stat.aptNo}</span>
+                          <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${stat.count > 0 ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-600'}`}>
+                            {stat.count} giriş
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-500 truncate">{stat.owner}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'visits' && (
+              <div className="space-y-6">
+                <div className="bg-white p-6 rounded-2xl border">
+                  <div className="flex flex-wrap justify-between items-center gap-4 mb-4">
+                    <div>
+                      <h3 className="text-lg font-bold">Daire Bazlı Giriş İstatistikleri</h3>
+                      <p className="text-xs text-slate-500">Her dairenin sisteme toplam kaç defa giriş yaptığını ve son ziyaret tarihini gösterir.</p>
+                    </div>
+                    {(data.loginLogs || []).length > 0 && (
+                      <button
+                        onClick={() => {
+                          if (!window.confirm("Tüm ziyaret geçmişi kayıtları silinsin mi?")) return;
+                          saveData({ ...data, loginLogs: [] });
+                          showNotification("Ziyaret geçmişi temizlendi.");
+                        }}
+                        className="bg-rose-50 hover:bg-rose-100 text-rose-600 px-4 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5"
+                      >
+                        <Trash2 className="w-4 h-4" /> Kayıtları Sıfırla
+                      </button>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                    {loginStatsByApt.map(stat => (
+                      <div key={stat.aptNo} className="p-4 rounded-xl border bg-slate-50">
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="font-bold text-sm">Daire {stat.aptNo}</span>
+                          <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${stat.count > 0 ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-600'}`}>
+                            {stat.count} Kez Girdi
+                          </span>
+                        </div>
+                        <p className="text-xs font-medium text-slate-700">{stat.owner}</p>
+                        <p className="text-[11px] text-slate-400 mt-1">Son: {stat.lastVisit}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="bg-white p-6 rounded-2xl border">
+                  <h3 className="text-lg font-bold mb-4">Detaylı Son Giriş Hareketleri</h3>
+                  {(data.loginLogs || []).length === 0 ? (
+                    <p className="text-sm text-slate-500">Henüz sisteme giriş yapan bir daire sakini olmadı.</p>
+                  ) : (
+                    <div className="overflow-x-auto max-h-[500px]">
+                      <table className="w-full text-left text-sm">
+                        <thead>
+                          <tr className="border-b bg-slate-50 sticky top-0">
+                            <th className="p-3">Tarih & Saat</th>
+                            <th className="p-3">Daire No</th>
+                            <th className="p-3">Daire Sahibi</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y">
+                          {(data.loginLogs || []).map(log => (
+                            <tr key={log.id}>
+                              <td className="p-3 font-mono text-xs text-slate-600">{log.timestamp}</td>
+                              <td className="p-3 font-bold">Daire {log.aptNo}</td>
+                              <td className="p-3">{log.owner}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
@@ -970,7 +1093,6 @@ export default function App() {
                   )}
                 </div>
 
-                {/* Son 5 Harcama Tablosu */}
                 <div className="bg-white p-6 rounded-2xl border">
                   <div className="flex justify-between items-center mb-4">
                     <div>
