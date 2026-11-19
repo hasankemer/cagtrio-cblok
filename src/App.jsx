@@ -593,4 +593,421 @@ export default function App() {
                         <option value="Genel">Genel Gider</option>
                         <option value="Elektrik">Elektrik</option>
                         <option value="Su">Su</option>
-                        <option value="
+                        <option value="Temizlik">Temizlik</option>
+                        <option value="Asansör">Asansör</option>
+                        <option value="Demirbaş">Demirbaş</option>
+                      </select>
+                    </div>
+
+                    <div className="p-4 bg-slate-50 rounded-xl border border-dashed border-slate-300 flex flex-col sm:flex-row items-center justify-between gap-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                          <ImageIcon className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-bold">Fiş / Fatura Görseli (İsteğe Bağlı)</p>
+                          <p className="text-xs text-slate-500">{expReceipt ? "Fotoğraf seçildi ✓" : "Fotoğraf yüklemek için seçin"}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 w-full sm:w-auto">
+                        <label className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-5 py-2.5 bg-white border rounded-xl text-sm font-semibold cursor-pointer shadow-sm">
+                          <span>{expReceipt ? "Değiştir" : "Fotoğraf Seç"}</span>
+                          <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
+                        </label>
+                        {expReceipt && <button onClick={() => setExpReceipt("")} className="bg-rose-50 text-rose-600 px-3 py-2.5 rounded-xl text-xs font-bold">Kaldır</button>}
+                      </div>
+                    </div>
+
+                    <button onClick={() => {
+                      if (!expTitle || !expAmount) return showNotification("Açıklama ve tutar girin.", true);
+                      saveData({ ...data, expenses: [{ id: Date.now(), title: expTitle, amount: Number(expAmount), date: expDate, category: expCat, receiptImage: expReceipt }, ...data.expenses] });
+                      setExpTitle(""); setExpAmount(""); setExpReceipt("");
+                      showNotification("Harcama eklendi.");
+                    }} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3.5 rounded-xl shadow flex items-center justify-center gap-2">
+                      <Plus className="w-5 h-5" /> Harcamayı ve Fişi Kaydet
+                    </button>
+                  </div>
+                </div>
+
+                <div className="bg-white p-6 rounded-2xl border">
+                  <h3 className="text-lg font-bold mb-4">Harcama Geçmişi & Fişler</h3>
+                  <table className="w-full text-left text-sm">
+                    <thead>
+                      <tr className="border-b bg-slate-50">
+                        <th className="p-3">Tarih</th><th className="p-3">Kategori</th><th className="p-3">Açıklama</th><th className="p-3 text-center">Fiş</th><th className="p-3 text-right">Tutar</th><th className="p-3 text-right">Sil</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {data.expenses.map(exp => (
+                        <tr key={exp.id}>
+                          <td className="p-3 font-mono text-xs">{exp.date}</td>
+                          <td className="p-3"><span className="bg-slate-100 px-2.5 py-1 rounded text-xs">{exp.category}</span></td>
+                          <td className="p-3 font-medium">{exp.title}</td>
+                          <td className="p-3 text-center">
+                            {exp.receiptImage ? (
+                              <button onClick={() => setViewingImage(exp.receiptImage)} className="bg-blue-50 text-blue-600 px-2.5 py-1 rounded text-xs font-semibold inline-flex items-center gap-1">
+                                <ImageIcon className="w-3.5 h-3.5" /> Gör
+                              </button>
+                            ) : <span className="text-slate-300">-</span>}
+                          </td>
+                          <td className="p-3 text-right font-bold text-rose-600">-{exp.amount} ₺</td>
+                          <td className="p-3 text-right"><button onClick={() => saveData({ ...data, expenses: data.expenses.filter(e => e.id !== exp.id) })} className="text-rose-500"><Trash2 className="w-4 h-4" /></button></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'maintenance' && (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="bg-white p-6 rounded-2xl border">
+                  <h3 className="text-lg font-bold mb-4">Temizlik Kayıtları & Arşiv</h3>
+                  <div className="space-y-3 bg-slate-50 p-4 rounded-xl mb-4">
+                    <input type="date" value={cleaningDate} onChange={(e) => setCleaningDate(e.target.value)} className="w-full px-3 py-2 bg-white border rounded" />
+                    <input type="text" placeholder="Temizliği Yapan" value={cleaningPerson} onChange={(e) => setCleaningPerson(e.target.value)} className="w-full px-3 py-2 bg-white border rounded" />
+                    <input type="text" placeholder="Not" value={cleaningNote} onChange={(e) => setCleaningNote(e.target.value)} className="w-full px-3 py-2 bg-white border rounded" />
+                    <button onClick={() => {
+                      if (!cleaningDate || !cleaningPerson) return showNotification("Tarih ve kişi girin.", true);
+                      saveData({ ...data, cleaningLogs: [{ id: Date.now(), date: cleaningDate, person: cleaningPerson, note: cleaningNote }, ...(data.cleaningLogs || [])] });
+                      setCleaningPerson(""); setCleaningNote("");
+                      showNotification("Temizlik eklendi.");
+                    }} className="w-full bg-emerald-600 text-white py-2 rounded text-sm font-semibold">Temizlik Ekle</button>
+                  </div>
+                  <div className="space-y-2 max-h-60 overflow-y-auto">
+                    {(data.cleaningLogs || []).map(l => (
+                      <div key={l.id} className="p-3 border rounded bg-white flex justify-between items-center text-sm">
+                        <div><span className="font-semibold">{l.person}</span>{l.note && <p className="text-xs text-slate-500">{l.note}</p>}</div>
+                        <div className="flex items-center gap-3">
+                          <span className="font-mono text-xs bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded">{l.date}</span>
+                          <button onClick={() => saveData({ ...data, cleaningLogs: data.cleaningLogs.filter(item => item.id !== l.id) })} className="text-rose-500"><Trash2 className="w-4 h-4" /></button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="bg-white p-6 rounded-2xl border">
+                  <h3 className="text-lg font-bold mb-4">Asansör Bakım Kayıtları & Arşiv</h3>
+                  <div className="space-y-3 bg-slate-50 p-4 rounded-xl mb-4">
+                    <input type="date" value={elevatorDate} onChange={(e) => setElevatorDate(e.target.value)} className="w-full px-3 py-2 bg-white border rounded" />
+                    <input type="text" placeholder="Bakım Firması" value={elevatorCompany} onChange={(e) => setElevatorCompany(e.target.value)} className="w-full px-3 py-2 bg-white border rounded" />
+                    <input type="text" placeholder="Not" value={elevatorNote} onChange={(e) => setElevatorNote(e.target.value)} className="w-full px-3 py-2 bg-white border rounded" />
+                    <button onClick={() => {
+                      if (!elevatorDate || !elevatorCompany) return showNotification("Tarih ve firma girin.", true);
+                      saveData({ ...data, elevatorLogs: [{ id: Date.now(), date: elevatorDate, company: elevatorCompany, note: elevatorNote }, ...(data.elevatorLogs || [])] });
+                      setElevatorCompany(""); setElevatorNote("");
+                      showNotification("Asansör bakımı eklendi.");
+                    }} className="w-full bg-blue-600 text-white py-2 rounded text-sm font-semibold">Asansör Bakımı Ekle</button>
+                  </div>
+                  <div className="space-y-2 max-h-60 overflow-y-auto">
+                    {(data.elevatorLogs || []).map(l => (
+                      <div key={l.id} className="p-3 border rounded bg-white flex justify-between items-center text-sm">
+                        <div><span className="font-semibold">{l.company}</span>{l.note && <p className="text-xs text-slate-500">{l.note}</p>}</div>
+                        <div className="flex items-center gap-3">
+                          <span className="font-mono text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded">{l.date}</span>
+                          <button onClick={() => saveData({ ...data, elevatorLogs: data.elevatorLogs.filter(item => item.id !== l.id) })} className="text-rose-500"><Trash2 className="w-4 h-4" /></button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'settings' && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="bg-white p-6 rounded-2xl border">
+                  <h3 className="text-lg font-bold mb-2">Önceki Yıldan Devir</h3>
+                  <p className="text-sm text-slate-500 mb-3">Geçen yıldan bu yıla devreden kasa bakiyesini girin.</p>
+                  <div className="flex gap-3 items-center">
+                    <input type="number" value={previousYearBalanceInput} onChange={(e) => setPreviousYearBalanceInput(e.target.value)} className="flex-1 min-w-0 px-4 py-2.5 border rounded-xl font-bold text-lg" placeholder="Devir tutarı" />
+                    <span className="font-semibold text-slate-500">₺</span>
+                  </div>
+                  <button type="button" onClick={() => {
+                    const amount = Number(previousYearBalanceInput);
+                    if (!Number.isFinite(amount)) return showNotification("Geçerli bir devir tutarı girin.", true);
+                    saveData({ ...data, previousYearBalance: amount });
+                    showNotification("Devir tutarı kaydedildi.");
+                  }} className="mt-3 w-full bg-emerald-600 text-white py-2.5 rounded-xl font-semibold">Devir Tutarını Kaydet</button>
+                </div>
+                <div className="bg-white p-6 rounded-2xl border flex flex-col justify-between">
+                  <div>
+                    <h3 className="text-lg font-bold mb-2">Varsayılan Aylık Aidat</h3>
+                    <input type="number" value={defaultFeeInput} onChange={(e) => setDefaultFeeInput(e.target.value)} className="w-full px-4 py-2.5 border rounded-xl font-bold text-lg text-emerald-700" />
+                  </div>
+                  <div className="mt-6 flex gap-3">
+                    <button onClick={() => {
+                      const val = Number(defaultFeeInput);
+                      saveData({ ...data, defaultMonthlyFee: val });
+                      showNotification("Kaydedildi.");
+                    }} className="flex-1 bg-emerald-600 text-white py-2.5 rounded-xl font-semibold">Kaydet</button>
+                    <button onClick={() => {
+                      const val = Number(defaultFeeInput);
+                      saveData({ ...data, defaultMonthlyFee: val, apartments: data.apartments.map(a => ({ ...a, monthlyFee: val })) });
+                      showNotification("Tüm dairelere uygulandı.");
+                    }} className="flex-1 bg-blue-600 text-white py-2.5 rounded-xl font-semibold">Tümüne Uygula</button>
+                  </div>
+                </div>
+
+                <div className="bg-white p-6 rounded-2xl border">
+                  <h3 className="text-lg font-bold mb-2">Yönetici Görev Geçmişi ve Aidat Muafiyeti</h3>
+                  <p className="text-sm text-slate-500 mb-4">Yeni yöneticiyi ve göreve başlama ayını seçin. Kayıt geçmişi korunur; eski yöneticinin muafiyeti bitiş ayından sonra otomatik kalkar.</p>
+                  <div className="space-y-3">
+                    <select id="manager-apartment-select" defaultValue={data.managerApartmentNo || ""} className="w-full px-4 py-2.5 border rounded-xl bg-white">
+                      <option value="">Yönetici dairesi seçilmedi</option>
+                      {data.apartments.map(apt => <option key={apt.id} value={apt.no}>Daire {apt.no} - {apt.owner}</option>)}
+                    </select>
+                    <label className="block text-xs font-semibold text-slate-600">Göreve başlama ayı (ayın 1'i esas alınır)</label>
+                    <input type="date" value={managerEffectiveDate} onChange={(e) => setManagerEffectiveDate(e.target.value)} className="w-full px-4 py-2.5 border rounded-xl" />
+                    <button onClick={() => {
+                      const select = document.getElementById("manager-apartment-select");
+                      const nextApartmentNo = select ? select.value : "";
+                      const effectiveDate = managerEffectiveDate;
+                      if (!effectiveDate || !effectiveDate.endsWith("-01")) return showNotification("Başlangıç tarihini ayın 1'i olarak seçin.", true);
+                      const history = [...(data.managerHistory || [])];
+                      const openIndex = history.findIndex(item => !item.endDate);
+                      if (openIndex >= 0) {
+                        const previous = history[openIndex];
+                        if (effectiveDate <= previous.startDate) return showNotification("Yeni görev başlangıcı önceki başlangıç tarihinden sonra olmalı.", true);
+                        const end = new Date(`${effectiveDate}T00:00:00`);
+                        end.setDate(end.getDate() - 1);
+                        history[openIndex] = { ...previous, endDate: end.toISOString().slice(0, 10) };
+                      } else if (!history.length && data.managerApartmentNo) {
+                        const end = new Date(`${effectiveDate}T00:00:00`);
+                        end.setDate(end.getDate() - 1);
+                        history.push({ apartmentNo: data.managerApartmentNo, startDate: `${currentYear}-01-01`, endDate: end.toISOString().slice(0, 10) });
+                      }
+                      if (nextApartmentNo) history.push({ apartmentNo: nextApartmentNo, startDate: effectiveDate, endDate: "" });
+                      saveData({ ...data, managerApartmentNo: nextApartmentNo, managerHistory: history });
+                      showNotification(nextApartmentNo ? `Daire ${nextApartmentNo} için yönetici görevi kaydedildi.` : "Yönetici görevi sonlandırıldı.");
+                    }} className="w-full bg-emerald-600 text-white py-2.5 rounded-xl font-semibold">Görevlendirmeyi Kaydet</button>
+                  </div>
+                  <div className="mt-5 border-t pt-4">
+                    <h4 className="font-bold text-sm mb-2">Görev geçmişi</h4>
+                    {(data.managerHistory || []).length === 0 ? <p className="text-xs text-slate-400">Henüz geçmiş kaydı yok. İlk kayıttan itibaren görev dönemleri burada tutulur.</p> :
+                      <div className="space-y-2 max-h-48 overflow-y-auto">
+                        {[...(data.managerHistory || [])].sort((a, b) => b.startDate.localeCompare(a.startDate)).map((item, idx) => {
+                          const apt = data.apartments.find(a => String(a.no) === String(item.apartmentNo));
+                          return <div key={`${item.apartmentNo}_${item.startDate}_${idx}`} className="flex items-center justify-between gap-3 text-sm bg-slate-50 rounded-lg p-3">
+                            <span className="min-w-0"><b>Daire {item.apartmentNo}</b>{apt ? ` - ${apt.owner}` : ""}</span>
+                            <div className="flex items-center gap-3 shrink-0">
+                              <span className="text-xs text-slate-500 text-right">{item.startDate} – {item.endDate || "Devam ediyor"}</span>
+                              <button
+                                type="button"
+                                title="Görev kaydını sil"
+                                aria-label={`Daire ${item.apartmentNo} görev kaydını sil`}
+                                onClick={() => {
+                                  if (!window.confirm(`Daire ${item.apartmentNo} için ${item.startDate} tarihli yönetici görev kaydı silinsin mi? Bu kayda bağlı geçmiş aidat muafiyeti hesabı da değişebilir.`)) return;
+                                  const updatedHistory = (data.managerHistory || []).filter((_, historyIndex) => historyIndex !== (data.managerHistory || []).indexOf(item));
+                                  const removesActiveManager = !item.endDate && String(data.managerApartmentNo || "") === String(item.apartmentNo);
+                                  saveData({
+                                    ...data,
+                                    managerHistory: updatedHistory,
+                                    managerApartmentNo: removesActiveManager ? "" : data.managerApartmentNo
+                                  });
+                                  showNotification("Yönetici görev kaydı silindi.");
+                                }}
+                                className="p-2 rounded-lg text-red-600 hover:bg-red-50"
+                              ><Trash2 size={16} /></button>
+                            </div>
+                          </div>;
+                        })}
+                      </div>}
+                  </div>
+                  <p className="text-xs text-amber-700 mt-3">Muafiyet, görevli olunan ayların tamamında uygulanır. Yalnızca aylık aidat içindir; ek ödeme / demirbaş kalemleri etkilenmez.</p>
+                </div>
+
+                <div className="bg-white p-6 rounded-2xl border flex flex-col justify-between">
+                  <div>
+                    <h3 className="text-lg font-bold mb-2">Yönetici Parolası</h3>
+                    <input type="password" placeholder="Yeni Parola" value={newAdminPass} onChange={(e) => setNewAdminPass(e.target.value)} className="w-full px-4 py-2.5 border rounded-xl font-mono" />
+                  </div>
+                  <button onClick={() => {
+                    if (!newAdminPass) return showNotification("Parola girin.", true);
+                    saveData({ ...data, adminPassword: newAdminPass });
+                    setNewAdminPass("");
+                    showNotification("Parola güncellendi.");
+                  }} className="mt-6 w-full bg-slate-800 text-white py-2.5 rounded-xl font-semibold">Parolayı Güncelle</button>
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
+          (() => {
+            const currentApt = data.apartments.find(a => a.no === session.aptNo);
+            if (!currentApt) return <p>Daire bulunamadı.</p>;
+            const aptFee = currentApt.monthlyFee !== undefined ? Number(currentApt.monthlyFee) : defaultFee;
+            let paidMonthsCount = 0;
+            MONTHS.forEach((_, idx) => {
+              if (!isManagerForMonth(currentApt.no, selectedYear, idx) && data.payments[getPaymentKey(selectedYear, currentApt.no, idx)]) paidMonthsCount++;
+            });
+            const totalFeePaid = paidMonthsCount * aptFee;
+            const totalExtraPaid = (data.extraItems || []).reduce((acc, item) => data.extraPayments?.[`${item.id}_${currentApt.no}`] ? acc + Number(item.amountPerApt || 0) : acc, 0);
+
+            const lastTwoCleanings = [...(data.cleaningLogs || [])].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 2);
+            const lastTwoElevators = [...(data.elevatorLogs || [])].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 2);
+
+            return (
+              <div className="space-y-6 max-w-5xl mx-auto">
+                <div className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white p-6 rounded-3xl flex flex-col md:flex-row justify-between items-center gap-4">
+                  <div>
+                    <span className="bg-white/20 text-xs px-3 py-1 rounded-full">Daire {currentApt.no}</span>
+                    <h2 className="text-2xl font-bold mt-2">Hoş Geldiniz, {currentApt.owner}</h2>
+                  </div>
+                  <div className="flex flex-wrap gap-3">
+                    <div className="bg-white/10 p-3 rounded-2xl text-center min-w-[110px]">
+                      <p className="text-[11px] text-blue-200">Toplam Ödemeniz</p>
+                      <p className="text-lg font-bold">{totalFeePaid + totalExtraPaid} ₺</p>
+                    </div>
+                    <div className="bg-white/10 p-3 rounded-2xl text-center min-w-[110px]">
+                      <p className="text-[11px] text-blue-200">Toplam Harcanan</p>
+                      <p className="text-lg font-bold text-rose-300">{totalExpenses} ₺</p>
+                    </div>
+                    <div className="bg-white/10 p-3 rounded-2xl text-center min-w-[110px]">
+                      <p className="text-[11px] text-blue-200">Kasada Kalan</p>
+                      <p className="text-lg font-bold text-emerald-300">{netBalance} ₺</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-white p-6 rounded-2xl border">
+                  <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                    <h3 className="text-lg font-bold">Aylık Aidat Durumu</h3>
+                    <label className="text-sm font-semibold flex items-center gap-2">Yıl
+                      <select value={selectedYear} onChange={(e) => setSelectedYear(Number(e.target.value))} className="border rounded-lg px-3 py-2 bg-white">
+                        {Array.from({ length: 7 }, (_, i) => currentYear - 3 + i).map(year => <option key={year} value={year}>{year}</option>)}
+                      </select>
+                    </label>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-6 gap-3">
+                    {MONTHS.map((m, idx) => {
+                      const isManagerThisMonth = isManagerForMonth(currentApt.no, selectedYear, idx);
+                      const isPaid = !!data.payments[getPaymentKey(selectedYear, currentApt.no, idx)];
+                      return (
+                        <div key={idx} className={`p-3 rounded-xl border flex flex-col items-center justify-center gap-1 ${isManagerThisMonth ? 'bg-amber-50 border-amber-200 text-amber-800' : isPaid ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-slate-50'}`}>
+                          <span className="text-xs font-semibold">{m}</span>
+                          <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${isManagerThisMonth ? 'bg-amber-100 text-amber-800' : isPaid ? 'bg-emerald-600 text-white' : 'bg-slate-200'}`}>{isManagerThisMonth ? 'Muaf' : isPaid ? 'Ödendi' : 'Bekliyor'}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="bg-white p-6 rounded-2xl border">
+                  <h3 className="text-lg font-bold mb-4">Ekstra / Demirbaş Ödemelerim</h3>
+                  {(data.extraItems || []).length === 0 ? (
+                    <p className="text-sm text-slate-500">Henüz eklenmiş bir ekstra ödeme kalemi bulunmuyor.</p>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {data.extraItems.map(item => {
+                        const isPaid = !!data.extraPayments?.[`${item.id}_${currentApt.no}`];
+                        return (
+                          <div key={item.id} className={`p-4 rounded-xl border flex justify-between items-center ${isPaid ? 'bg-emerald-50 border-emerald-200 text-emerald-900' : 'bg-slate-50'}`}>
+                            <div>
+                              <p className="font-bold text-sm">{item.title}</p>
+                              <p className="text-xs text-slate-500 mt-0.5">Tarih: {item.date} • Tutar: <span className="font-semibold text-slate-700">{item.amountPerApt} ₺</span></p>
+                            </div>
+                            <span className={`text-xs font-bold px-3 py-1 rounded-full ${isPaid ? 'bg-emerald-600 text-white' : 'bg-amber-100 text-amber-800'}`}>
+                              {isPaid ? 'Ödendi ✓' : 'Ödenmedi'}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                <div className="bg-white p-6 rounded-2xl border">
+                  <h3 className="text-lg font-bold mb-4">Apartman Harcamaları & Fişler</h3>
+                  <table className="w-full text-left text-sm">
+                    <thead>
+                      <tr className="border-b bg-slate-50">
+                        <th className="p-3">Tarih</th><th className="p-3">Kategori</th><th className="p-3">Açıklama</th><th className="p-3 text-center">Fiş</th><th className="p-3 text-right">Tutar</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {data.expenses.map(exp => (
+                        <tr key={exp.id}>
+                          <td className="p-3 font-mono text-xs">{exp.date}</td>
+                          <td className="p-3"><span className="bg-slate-100 px-2.5 py-1 rounded text-xs">{exp.category}</span></td>
+                          <td className="p-3 font-medium">{exp.title}</td>
+                          <td className="p-3 text-center">
+                            {exp.receiptImage ? (
+                              <button onClick={() => setViewingImage(exp.receiptImage)} className="bg-blue-50 text-blue-600 px-2.5 py-1 rounded text-xs font-semibold inline-flex items-center gap-1">
+                                <ImageIcon className="w-3.5 h-3.5" /> Fişi Gör
+                              </button>
+                            ) : <span className="text-slate-300">-</span>}
+                          </td>
+                          <td className="p-3 text-right font-bold text-rose-600">-{exp.amount} ₺</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="bg-white p-6 rounded-2xl border">
+                    <h3 className="text-lg font-bold mb-3">Son Yapılan Temizlikler</h3>
+                    {lastTwoCleanings.length === 0 ? (
+                      <p className="text-xs text-slate-400">Henüz temizlik kaydı bulunmuyor.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {lastTwoCleanings.map(l => (
+                          <div key={l.id} className="p-3 border rounded-xl bg-slate-50 flex justify-between items-center text-sm">
+                            <div>
+                              <span className="font-semibold text-slate-800">{l.person}</span>
+                              {l.note && <p className="text-xs text-slate-500">{l.note}</p>}
+                            </div>
+                            <span className="font-mono text-xs bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded-full">{l.date}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="bg-white p-6 rounded-2xl border">
+                    <h3 className="text-lg font-bold mb-3">Son Asansör Bakımları</h3>
+                    {lastTwoElevators.length === 0 ? (
+                      <p className="text-xs text-slate-400">Henüz asansör bakım kaydı bulunmuyor.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {lastTwoElevators.map(l => (
+                          <div key={l.id} className="p-3 border rounded-xl bg-slate-50 flex justify-between items-center text-sm">
+                            <div>
+                              <span className="font-semibold text-slate-800">{l.company}</span>
+                              {l.note && <p className="text-xs text-slate-500">{l.note}</p>}
+                            </div>
+                            <span className="font-mono text-xs bg-blue-100 text-blue-800 px-2.5 py-1 rounded-full">{l.date}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="bg-white p-6 rounded-2xl border max-w-md">
+                  <h3 className="text-lg font-bold mb-2">Telefon Son 4 Hane Güncelle</h3>
+                  <div className="space-y-3">
+                    <input type="password" maxLength="4" placeholder="Yeni 4 Hane" value={residentNewPhone} onChange={(e) => setResidentNewPhone(e.target.value)} className="w-full px-4 py-2.5 border rounded-xl font-mono" />
+                    <button onClick={() => {
+                      if (!residentNewPhone || residentNewPhone.length !== 4) return showNotification("4 haneli olmalı.", true);
+                      saveData({ ...data, apartments: data.apartments.map(a => a.no === currentApt.no ? { ...a, phone: residentNewPhone } : a) });
+                      setResidentNewPhone("");
+                      showNotification("Telefon güncellendi.");
+                    }} className="bg-blue-600 text-white font-semibold px-6 py-2.5 rounded-xl text-sm">Güncelle</button>
+                  </div>
+                </div>
+              </div>
+            );
+          })()
+        )}
+      </main>
+
+      <footer className="bg-white border-t py-4 mt-8">
+        <div className="max-w-7xl mx-auto px-4 text-center text-xs text-slate-500">© 2026 Çağ Trio Apartmanı C Blok</div>
+      </footer>
+    </div>
+  );
+}
