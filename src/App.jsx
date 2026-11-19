@@ -4,7 +4,7 @@ import { getFirestore, doc, setDoc, onSnapshot } from 'firebase/firestore';
 import { 
   Building2, Users, Wallet, Wrench, Shield, Key, Plus, Trash2, 
   CheckCircle2, AlertCircle, Phone, ArrowUpRight, 
-  Sparkles, RefreshCw, LogOut, FileText, Layers, DollarSign, Image as ImageIcon, X, Edit3, Eye, Activity
+  Sparkles, RefreshCw, LogOut, FileText, Layers, DollarSign, Image as ImageIcon, X, Edit3, Eye, Activity, Bell, Printer, MessageSquarePlus
 } from 'lucide-react';
 
 const firebaseConfig = {
@@ -49,7 +49,9 @@ const INITIAL_DATA = {
   ],
   cleaningLogs: [],
   elevatorLogs: [],
-  loginLogs: []
+  loginLogs: [],
+  announcement: "Apartman sakinlerimizin dikkatine: Yıllık genel kurul toplantımız önümüzdeki hafta sonu yapılacaktır.",
+  requests: []
 };
 
 const MONTHS = [
@@ -105,6 +107,10 @@ export default function App() {
   const [previousYearBalanceInput, setPreviousYearBalanceInput] = useState(String(INITIAL_DATA.previousYearBalance));
   const [residentNewPhone, setResidentNewPhone] = useState("");
 
+  const [announcementInput, setAnnouncementInput] = useState("");
+  const [newRequestText, setNewRequestText] = useState("");
+  const [newRequestCat, setNewRequestCat] = useState("Arıza");
+
   useEffect(() => {
     const normalizeData = (raw) => ({
       ...INITIAL_DATA,
@@ -125,7 +131,9 @@ export default function App() {
       expenses: (raw.expenses || []).map(e => ({ ...e, receiptImage: e.receiptImage || "" })),
       cleaningLogs: raw.cleaningLogs || [],
       elevatorLogs: raw.elevatorLogs || [],
-      loginLogs: Array.isArray(raw.loginLogs) ? raw.loginLogs : []
+      loginLogs: Array.isArray(raw.loginLogs) ? raw.loginLogs : [],
+      announcement: raw.announcement !== undefined ? raw.announcement : INITIAL_DATA.announcement,
+      requests: Array.isArray(raw.requests) ? raw.requests : []
     });
 
     if (!db || !isFirebaseConnected) {
@@ -136,10 +144,12 @@ export default function App() {
           setData(parsed);
           setDefaultFeeInput(String(parsed.defaultMonthlyFee));
           setPreviousYearBalanceInput(String(parsed.previousYearBalance ?? 0));
+          setAnnouncementInput(parsed.announcement || "");
         } catch(e) {}
       } else {
         setDefaultFeeInput(String(INITIAL_DATA.defaultMonthlyFee));
         setPreviousYearBalanceInput(String(INITIAL_DATA.previousYearBalance));
+        setAnnouncementInput(INITIAL_DATA.announcement);
       }
       setLoading(false);
       return;
@@ -152,11 +162,13 @@ export default function App() {
         setData(normalized);
         setDefaultFeeInput(String(normalized.defaultMonthlyFee));
         setPreviousYearBalanceInput(String(normalized.previousYearBalance ?? 0));
+        setAnnouncementInput(normalized.announcement || "");
       } else {
         setDoc(docRef, INITIAL_DATA);
         setData(INITIAL_DATA);
         setDefaultFeeInput(String(INITIAL_DATA.defaultMonthlyFee));
         setPreviousYearBalanceInput(String(INITIAL_DATA.previousYearBalance));
+        setAnnouncementInput(INITIAL_DATA.announcement);
       }
       setLoading(false);
     }, (error) => {
@@ -290,6 +302,12 @@ export default function App() {
       lastVisit: logs.length > 0 ? logs[0].timestamp : "Henüz giriş yok"
     };
   });
+
+  const expensesByCategory = data.expenses.reduce((acc, exp) => {
+    const cat = exp.category || "Genel";
+    acc[cat] = (acc[cat] || 0) + Number(exp.amount || 0);
+    return acc;
+  }, {});
 
   if (loading) {
     return (
@@ -489,8 +507,11 @@ export default function App() {
               <button onClick={() => setActiveTab('extras')} className={`px-4 py-2.5 rounded-xl text-sm font-semibold ${activeTab === 'extras' ? 'bg-emerald-600 text-white' : 'text-slate-600'}`}>Ekstralar</button>
               <button onClick={() => setActiveTab('finances')} className={`px-4 py-2.5 rounded-xl text-sm font-semibold ${activeTab === 'finances' ? 'bg-emerald-600 text-white' : 'text-slate-600'}`}>Harcamalar & Fişler</button>
               <button onClick={() => setActiveTab('maintenance')} className={`px-4 py-2.5 rounded-xl text-sm font-semibold ${activeTab === 'maintenance' ? 'bg-emerald-600 text-white' : 'text-slate-600'}`}>Temizlik & Asansör</button>
+              <button onClick={() => setActiveTab('requests')} className={`px-4 py-2.5 rounded-xl text-sm font-semibold flex items-center gap-1.5 ${activeTab === 'requests' ? 'bg-emerald-600 text-white' : 'text-slate-600'}`}>
+                <Bell className="w-4 h-4" /> Arıza/Talepler ({(data.requests || []).filter(r => !r.resolved).length})
+              </button>
               <button onClick={() => setActiveTab('visits')} className={`px-4 py-2.5 rounded-xl text-sm font-semibold flex items-center gap-1.5 ${activeTab === 'visits' ? 'bg-emerald-600 text-white' : 'text-slate-600'}`}>
-                <Activity className="w-4 h-4" /> Ziyaret Kayıtları ({(data.loginLogs || []).length})
+                <Activity className="w-4 h-4" /> Ziyaretler ({(data.loginLogs || []).length})
               </button>
               <button onClick={() => setActiveTab('settings')} className={`px-4 py-2.5 rounded-xl text-sm font-semibold ${activeTab === 'settings' ? 'bg-emerald-600 text-white' : 'text-slate-600'}`}>Ayarlar</button>
             </div>
@@ -504,29 +525,85 @@ export default function App() {
                   <div className="bg-white p-5 rounded-2xl border"><p className="text-xs text-slate-400">Harcamalar</p><h3 className="text-xl font-bold text-rose-600">{totalExpenses} ₺</h3></div>
                   <div className="bg-white p-5 rounded-2xl border"><p className="text-xs text-slate-400">Net Kasa</p><h3 className="text-xl font-bold">{netBalance} ₺</h3></div>
                   <div onClick={() => setActiveTab('visits')} className="bg-blue-50/70 hover:bg-blue-100/70 transition cursor-pointer p-5 rounded-2xl border border-blue-200">
-                    <p className="text-xs text-blue-600 font-semibold">Toplam Sakin Girişi</p>
+                    <p className="text-xs text-blue-600 font-semibold">Toplam Ziyaret</p>
                     <h3 className="text-xl font-bold text-blue-900">{(data.loginLogs || []).length} Kez</h3>
                   </div>
                 </div>
 
+                {/* Kategori Bazlı Harcama Dağılımı */}
                 <div className="bg-white p-6 rounded-2xl border">
-                  <div className="flex justify-between items-center mb-4">
-                    <h3 className="text-lg font-bold flex items-center gap-2"><Activity className="w-5 h-5 text-blue-600" /> Daire Bazlı Sisteme Giriş Sayıları</h3>
-                    <button onClick={() => setActiveTab('visits')} className="text-xs text-blue-600 font-semibold hover:underline">Tüm Kayıtları Gör →</button>
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3">
-                    {loginStatsByApt.map(stat => (
-                      <div key={stat.aptNo} className="p-3 rounded-xl border bg-slate-50 flex flex-col justify-between">
-                        <div className="flex justify-between items-center mb-1">
-                          <span className="font-bold text-xs text-slate-700">Daire {stat.aptNo}</span>
-                          <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${stat.count > 0 ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-600'}`}>
-                            {stat.count} giriş
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-slate-500 truncate">{stat.owner}</p>
+                  <h3 className="text-lg font-bold mb-4 flex items-center gap-2"><Layers className="w-5 h-5 text-emerald-600" /> Kategoriye Göre Harcama Dağılımı</h3>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                    {Object.entries(expensesByCategory).map(([cat, amt]) => (
+                      <div key={cat} className="p-4 rounded-xl border bg-slate-50">
+                        <p className="text-xs text-slate-500 font-medium">{cat}</p>
+                        <p className="text-lg font-bold text-rose-600 mt-1">{amt} ₺</p>
                       </div>
                     ))}
+                    {Object.keys(expensesByCategory).length === 0 && <p className="text-xs text-slate-400">Henüz harcama bulunmuyor.</p>}
                   </div>
+                </div>
+
+                <div className="bg-white p-6 rounded-2xl border flex flex-col sm:flex-row justify-between items-center gap-4">
+                  <div>
+                    <h3 className="text-lg font-bold">Raporlar & Yazdırma</h3>
+                    <p className="text-xs text-slate-500">Tüm kasa özetini ve harcamaları yazdırılabilir formatta açın.</p>
+                  </div>
+                  <button onClick={() => window.print()} className="bg-slate-900 hover:bg-slate-800 text-white px-6 py-2.5 rounded-xl text-sm font-semibold flex items-center gap-2 shadow">
+                    <Printer className="w-4 h-4" /> Rapor Al / Yazdır
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'requests' && (
+              <div className="space-y-6">
+                <div className="bg-white p-6 rounded-2xl border">
+                  <div className="flex justify-between items-center mb-4">
+                    <div>
+                      <h3 className="text-lg font-bold">Sakinlerden Gelen Arıza ve Öneri Talepleri</h3>
+                      <p className="text-xs text-slate-500">Daire sakinlerinin bildirdiği arıza veya önerileri buradan takip edebilirsiniz.</p>
+                    </div>
+                  </div>
+                  {(data.requests || []).length === 0 ? (
+                    <p className="text-sm text-slate-500">Henüz bildirilmiş bir arıza veya talep yok.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {(data.requests || []).map(req => (
+                        <div key={req.id} className={`p-4 rounded-xl border flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 ${req.resolved ? 'bg-emerald-50/50 border-emerald-200' : 'bg-slate-50'}`}>
+                          <div>
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="font-bold text-sm">Daire {req.aptNo} ({req.owner})</span>
+                              <span className={`text-[10px] px-2 py-0.5 rounded font-semibold ${req.category === 'Arıza' ? 'bg-rose-100 text-rose-800' : 'bg-blue-100 text-blue-800'}`}>{req.category}</span>
+                              <span className="text-[11px] text-slate-400 font-mono">{req.date}</span>
+                            </div>
+                            <p className="text-sm text-slate-700">{req.text}</p>
+                          </div>
+                          <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                            <button
+                              onClick={() => {
+                                const updated = data.requests.map(r => r.id === req.id ? { ...r, resolved: !r.resolved } : r);
+                                saveData({ ...data, requests: updated });
+                              }}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${req.resolved ? 'bg-emerald-600 text-white' : 'bg-amber-100 text-amber-800 hover:bg-amber-200'}`}
+                            >
+                              {req.resolved ? 'Çözüldü ✓' : 'Çözüldü Olarak İşaretle'}
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (!window.confirm("Bu talep silinsin mi?")) return;
+                                saveData({ ...data, requests: data.requests.filter(r => r.id !== req.id) });
+                                showNotification("Talep silindi.");
+                              }}
+                              className="text-rose-500 p-1.5 hover:bg-rose-50 rounded-lg"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -891,6 +968,16 @@ export default function App() {
 
             {activeTab === 'settings' && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="bg-white p-6 rounded-2xl border md:col-span-2">
+                  <h3 className="text-lg font-bold mb-2">Apartman Duyuru Panosu Yönetimi</h3>
+                  <p className="text-sm text-slate-500 mb-3">Buraya yazdığınız duyuru tüm sakinlerin ana ekranında en üstte renkli duyuru olarak görünür.</p>
+                  <textarea rows="3" value={announcementInput} onChange={(e) => setAnnouncementInput(e.target.value)} className="w-full p-4 border rounded-xl text-sm" placeholder="Duyuru metnini yazın..." />
+                  <button onClick={() => {
+                    saveData({ ...data, announcement: announcementInput });
+                    showNotification("Duyuru güncellendi.");
+                  }} className="mt-3 bg-emerald-600 text-white px-6 py-2.5 rounded-xl font-semibold text-sm">Duyuruyu Yayınla</button>
+                </div>
+
                 <div className="bg-white p-6 rounded-2xl border">
                   <h3 className="text-lg font-bold mb-2">Önceki Yıldan Devir</h3>
                   <p className="text-sm text-slate-500 mb-3">Geçen yıldan bu yıla devreden kasa bakiyesini girin.</p>
@@ -1025,6 +1112,17 @@ export default function App() {
 
             return (
               <div className="space-y-6 max-w-5xl mx-auto">
+                {/* Duyuru Panosu */}
+                {data.announcement && (
+                  <div className="bg-amber-50 border-l-4 border-amber-500 text-amber-900 p-4 rounded-2xl shadow-sm flex items-start gap-3">
+                    <Bell className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                    <div>
+                      <h4 className="font-bold text-sm">Apartman Duyurusu</h4>
+                      <p className="text-xs mt-1 leading-relaxed">{data.announcement}</p>
+                    </div>
+                  </div>
+                )}
+
                 <div className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white p-6 rounded-3xl flex flex-col md:flex-row justify-between items-center gap-4">
                   <div>
                     <span className="bg-white/20 text-xs px-3 py-1 rounded-full">Daire {currentApt.no}</span>
@@ -1043,6 +1141,35 @@ export default function App() {
                       <p className="text-[11px] text-blue-200">Kasada Kalan</p>
                       <p className="text-lg font-bold text-emerald-300">{netBalance} ₺</p>
                     </div>
+                  </div>
+                </div>
+
+                {/* Arıza / Öneri Gönderme Alanı */}
+                <div className="bg-white p-6 rounded-2xl border">
+                  <h3 className="text-lg font-bold mb-3 flex items-center gap-2"><MessageSquarePlus className="w-5 h-5 text-blue-600" /> Yönetime Arıza veya Öneri Bildir</h3>
+                  <div className="space-y-3">
+                    <div className="flex gap-3">
+                      <select value={newRequestCat} onChange={(e) => setNewRequestCat(e.target.value)} className="px-4 py-2 border rounded-xl text-sm bg-slate-50 font-semibold">
+                        <option value="Arıza">Arıza / Şikayet</option>
+                        <option value="Öneri">Öneri / İstek</option>
+                      </select>
+                    </div>
+                    <textarea rows="2" value={newRequestText} onChange={(e) => setNewRequestText(e.target.value)} placeholder="Bildirmek istediğiniz arıza veya öneriyi yazın..." className="w-full p-3 border rounded-xl text-sm bg-slate-50" />
+                    <button onClick={() => {
+                      if (!newRequestText.trim()) return showNotification("Lütfen bir açıklama yazın.", true);
+                      const newReq = {
+                        id: Date.now(),
+                        aptNo: currentApt.no,
+                        owner: currentApt.owner,
+                        category: newRequestCat,
+                        text: newRequestText,
+                        date: new Date().toLocaleDateString('tr-TR'),
+                        resolved: false
+                      };
+                      saveData({ ...data, requests: [newReq, ...(data.requests || [])] });
+                      setNewRequestText("");
+                      showNotification("Talebiniz yöneticiye iletildi.");
+                    }} className="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-2 rounded-xl text-sm">Bildirimi Gönder</button>
                   </div>
                 </div>
 
