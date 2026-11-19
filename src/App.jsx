@@ -351,7 +351,6 @@ export default function App() {
                 <thead>
                   <tr className="border-b bg-slate-50 sticky top-0">
                     <th className="p-3">Tarih</th>
-                    <th className="p-3">Kategori</th>
                     <th className="p-3">Açıklama</th>
                     <th className="p-3 text-center">Fiş</th>
                     <th className="p-3 text-right">Tutar</th>
@@ -361,7 +360,6 @@ export default function App() {
                   {data.expenses.map(exp => (
                     <tr key={exp.id}>
                       <td className="p-3 font-mono text-xs">{exp.date}</td>
-                      <td className="p-3"><span className="bg-slate-100 px-2.5 py-1 rounded text-xs">{exp.category}</span></td>
                       <td className="p-3 font-medium">{exp.title}</td>
                       <td className="p-3 text-center">
                         {exp.receiptImage ? (
@@ -530,7 +528,6 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Kategori Bazlı Harcama Dağılımı */}
                 <div className="bg-white p-6 rounded-2xl border">
                   <h3 className="text-lg font-bold mb-4 flex items-center gap-2"><Layers className="w-5 h-5 text-emerald-600" /> Kategoriye Göre Harcama Dağılımı</h3>
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
@@ -1112,7 +1109,6 @@ export default function App() {
 
             return (
               <div className="space-y-6 max-w-5xl mx-auto">
-                {/* Duyuru Panosu */}
                 {data.announcement && (
                   <div className="bg-amber-50 border-l-4 border-amber-500 text-amber-900 p-4 rounded-2xl shadow-sm flex items-start gap-3">
                     <Bell className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
@@ -1144,7 +1140,6 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Arıza / Öneri Gönderme Alanı */}
                 <div className="bg-white p-6 rounded-2xl border">
                   <h3 className="text-lg font-bold mb-3 flex items-center gap-2"><MessageSquarePlus className="w-5 h-5 text-blue-600" /> Yönetime Arıza veya Öneri Bildir</h3>
                   <div className="space-y-3">
@@ -1239,7 +1234,6 @@ export default function App() {
                       <thead>
                         <tr className="border-b bg-slate-50">
                           <th className="p-3">Tarih</th>
-                          <th className="p-3">Kategori</th>
                           <th className="p-3">Açıklama</th>
                           <th className="p-3 text-center">Fiş</th>
                           <th className="p-3 text-right">Tutar</th>
@@ -1249,7 +1243,6 @@ export default function App() {
                         {lastFiveExpenses.map(exp => (
                           <tr key={exp.id}>
                             <td className="p-3 font-mono text-xs">{exp.date}</td>
-                            <td className="p-3"><span className="bg-slate-100 px-2.5 py-1 rounded text-xs">{exp.category}</span></td>
                             <td className="p-3 font-medium">{exp.title}</td>
                             <td className="p-3 text-center">
                               {exp.receiptImage ? (
