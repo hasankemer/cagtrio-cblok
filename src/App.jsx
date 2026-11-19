@@ -59,6 +59,21 @@ const MONTHS = [
   "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"
 ];
 
+const round2 = (val) => {
+  const num = Number(val);
+  if (!Number.isFinite(num)) return 0;
+  return Math.round(num * 100) / 100;
+};
+
+const formatMoney = (val) => {
+  const rounded = round2(val);
+  const hasDecimals = Math.abs(rounded % 1) > 0;
+  return rounded.toLocaleString('tr-TR', {
+    minimumFractionDigits: hasDecimals ? 2 : 0,
+    maximumFractionDigits: 2
+  });
+};
+
 export default function App() {
   const [data, setData] = useState(INITIAL_DATA);
   const [loading, setLoading] = useState(true);
@@ -115,7 +130,7 @@ export default function App() {
     const normalizeData = (raw) => ({
       ...INITIAL_DATA,
       ...raw,
-      defaultMonthlyFee: raw.defaultMonthlyFee !== undefined ? Number(raw.defaultMonthlyFee) : 500,
+      defaultMonthlyFee: raw.defaultMonthlyFee !== undefined ? round2(raw.defaultMonthlyFee) : 500,
       managerApartmentNo: raw.managerApartmentNo || "",
       managerHistory: Array.isArray(raw.managerHistory) ? raw.managerHistory : [],
       payments: (() => {
@@ -126,9 +141,9 @@ export default function App() {
         });
         return migrated;
       })(),
-      extraItems: raw.extraItems || [],
+      extraItems: (raw.extraItems || []).map(item => ({ ...item, amountPerApt: round2(item.amountPerApt) })),
       extraPayments: raw.extraPayments || {},
-      expenses: (raw.expenses || []).map(e => ({ ...e, receiptImage: e.receiptImage || "" })),
+      expenses: (raw.expenses || []).map(e => ({ ...e, amount: round2(e.amount), receiptImage: e.receiptImage || "" })),
       cleaningLogs: raw.cleaningLogs || [],
       elevatorLogs: raw.elevatorLogs || [],
       loginLogs: Array.isArray(raw.loginLogs) ? raw.loginLogs : [],
@@ -271,27 +286,29 @@ export default function App() {
     return Number(year) === currentYear && String(data.managerApartmentNo || "") === String(aptNo);
   };
 
-  const defaultFee = Number(data.defaultMonthlyFee || 500);
+  const defaultFee = round2(data.defaultMonthlyFee || 500);
 
-  const totalIncomeFromFees = data.apartments.reduce((acc, apt) => {
+  const totalIncomeFromFees = round2(data.apartments.reduce((acc, apt) => {
     let count = 0;
     MONTHS.forEach((_, idx) => {
       if (!isManagerForMonth(apt.no, selectedYear, idx) && data.payments[getPaymentKey(selectedYear, apt.no, idx)]) count++;
     });
-    return acc + (count * (apt.monthlyFee !== undefined ? Number(apt.monthlyFee) : defaultFee));
-  }, 0);
+    const fee = apt.monthlyFee !== undefined ? round2(apt.monthlyFee) : defaultFee;
+    return acc + round2(count * fee);
+  }, 0));
 
-  const totalIncomeFromExtras = (data.extraItems || []).reduce((acc, item) => {
+  const totalIncomeFromExtras = round2((data.extraItems || []).reduce((acc, item) => {
     let paidCount = 0;
     data.apartments.forEach(apt => {
       if (data.extraPayments?.[`${item.id}_${apt.no}`]) paidCount++;
     });
-    return acc + (paidCount * Number(item.amountPerApt || 0));
-  }, 0);
+    return acc + round2(paidCount * round2(item.amountPerApt || 0));
+  }, 0));
 
-  const totalBalance = (data.previousYearBalance || 0) + totalIncomeFromFees + totalIncomeFromExtras;
-  const totalExpenses = data.expenses.reduce((acc, exp) => acc + Number(exp.amount || 0), 0);
-  const netBalance = totalBalance - totalExpenses;
+  const previousBalance = round2(data.previousYearBalance || 0);
+  const totalBalance = round2(previousBalance + totalIncomeFromFees + totalIncomeFromExtras);
+  const totalExpenses = round2(data.expenses.reduce((acc, exp) => acc + round2(exp.amount || 0), 0));
+  const netBalance = round2(totalBalance - totalExpenses);
 
   const loginStatsByApt = data.apartments.map(apt => {
     const logs = (data.loginLogs || []).filter(l => String(l.aptNo) === String(apt.no));
@@ -305,7 +322,7 @@ export default function App() {
 
   const expensesByCategory = data.expenses.reduce((acc, exp) => {
     const cat = exp.category || "Genel";
-    acc[cat] = (acc[cat] || 0) + Number(exp.amount || 0);
+    acc[cat] = round2((acc[cat] || 0) + round2(exp.amount || 0));
     return acc;
   }, {});
 
@@ -368,7 +385,7 @@ export default function App() {
                           </button>
                         ) : <span className="text-slate-300">-</span>}
                       </td>
-                      <td className="p-3 text-right font-bold text-rose-600">-{exp.amount} ₺</td>
+                      <td className="p-3 text-right font-bold text-rose-600">-{formatMoney(exp.amount)} ₺</td>
                     </tr>
                   ))}
                 </tbody>
@@ -409,15 +426,16 @@ export default function App() {
                 <label className="block text-xs font-semibold uppercase mb-1">Aylık Aidat (₺)</label>
                 <input 
                   type="number" 
+                  step="0.01"
                   value={editingApt.monthlyFee} 
-                  onChange={(e) => setEditingApt({ ...editingApt, monthlyFee: Number(e.target.value) })} 
+                  onChange={(e) => setEditingApt({ ...editingApt, monthlyFee: round2(e.target.value) })} 
                   className="w-full px-4 py-2.5 border rounded-xl font-semibold text-emerald-600" 
                 />
               </div>
               <div className="flex gap-3 mt-6">
                 <button 
                   onClick={() => {
-                    const updated = data.apartments.map(a => a.id === editingApt.id ? editingApt : a);
+                    const updated = data.apartments.map(a => a.id === editingApt.id ? { ...editingApt, monthlyFee: round2(editingApt.monthlyFee) } : a);
                     saveData({ ...data, apartments: updated });
                     setEditingApt(null);
                     showNotification("Daire bilgileri güncellendi.");
@@ -517,11 +535,11 @@ export default function App() {
             {activeTab === 'dashboard' && (
               <div className="space-y-6">
                 <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-                  <div className="bg-white p-5 rounded-2xl border"><p className="text-xs text-slate-400">Devir</p><h3 className="text-xl font-bold">{data.previousYearBalance} ₺</h3></div>
-                  <div className="bg-white p-5 rounded-2xl border"><p className="text-xs text-slate-400">Aidatlar</p><h3 className="text-xl font-bold text-emerald-600">{totalIncomeFromFees} ₺</h3></div>
-                  <div className="bg-white p-5 rounded-2xl border"><p className="text-xs text-slate-400">Ekstralar</p><h3 className="text-xl font-bold text-indigo-600">{totalIncomeFromExtras} ₺</h3></div>
-                  <div className="bg-white p-5 rounded-2xl border"><p className="text-xs text-slate-400">Harcamalar</p><h3 className="text-xl font-bold text-rose-600">{totalExpenses} ₺</h3></div>
-                  <div className="bg-white p-5 rounded-2xl border"><p className="text-xs text-slate-400">Net Kasa</p><h3 className="text-xl font-bold">{netBalance} ₺</h3></div>
+                  <div className="bg-white p-5 rounded-2xl border"><p className="text-xs text-slate-400">Devir</p><h3 className="text-xl font-bold">{formatMoney(previousBalance)} ₺</h3></div>
+                  <div className="bg-white p-5 rounded-2xl border"><p className="text-xs text-slate-400">Aidatlar</p><h3 className="text-xl font-bold text-emerald-600">{formatMoney(totalIncomeFromFees)} ₺</h3></div>
+                  <div className="bg-white p-5 rounded-2xl border"><p className="text-xs text-slate-400">Ekstralar</p><h3 className="text-xl font-bold text-indigo-600">{formatMoney(totalIncomeFromExtras)} ₺</h3></div>
+                  <div className="bg-white p-5 rounded-2xl border"><p className="text-xs text-slate-400">Harcamalar</p><h3 className="text-xl font-bold text-rose-600">{formatMoney(totalExpenses)} ₺</h3></div>
+                  <div className="bg-white p-5 rounded-2xl border"><p className="text-xs text-slate-400">Net Kasa</p><h3 className="text-xl font-bold">{formatMoney(netBalance)} ₺</h3></div>
                   <div onClick={() => setActiveTab('visits')} className="bg-blue-50/70 hover:bg-blue-100/70 transition cursor-pointer p-5 rounded-2xl border border-blue-200">
                     <p className="text-xs text-blue-600 font-semibold">Toplam Ziyaret</p>
                     <h3 className="text-xl font-bold text-blue-900">{(data.loginLogs || []).length} Kez</h3>
@@ -534,7 +552,7 @@ export default function App() {
                     {Object.entries(expensesByCategory).map(([cat, amt]) => (
                       <div key={cat} className="p-4 rounded-xl border bg-slate-50">
                         <p className="text-xs text-slate-500 font-medium">{cat}</p>
-                        <p className="text-lg font-bold text-rose-600 mt-1">{amt} ₺</p>
+                        <p className="text-lg font-bold text-rose-600 mt-1">{formatMoney(amt)} ₺</p>
                       </div>
                     ))}
                     {Object.keys(expensesByCategory).length === 0 && <p className="text-xs text-slate-400">Henüz harcama bulunmuyor.</p>}
@@ -680,10 +698,10 @@ export default function App() {
                     <input type="text" placeholder="Daire No" value={newAptNo} onChange={(e) => setNewAptNo(e.target.value)} className="px-4 py-2.5 border rounded-xl" />
                     <input type="text" placeholder="Sahibi" value={newOwner} onChange={(e) => setNewOwner(e.target.value)} className="px-4 py-2.5 border rounded-xl" />
                     <input type="text" maxLength="4" placeholder="Tel 4 Hane" value={newPhone} onChange={(e) => setNewPhone(e.target.value)} className="px-4 py-2.5 border rounded-xl font-mono" />
-                    <input type="number" placeholder={`Aidat (${defaultFee} ₺)`} value={newFee !== "" ? newFee : defaultFee} onChange={(e) => setNewFee(e.target.value)} className="px-4 py-2.5 border rounded-xl" />
+                    <input type="number" step="0.01" placeholder={`Aidat (${formatMoney(defaultFee)} ₺)`} value={newFee !== "" ? newFee : defaultFee} onChange={(e) => setNewFee(e.target.value)} className="px-4 py-2.5 border rounded-xl" />
                     <button onClick={() => {
                       if (!newAptNo || !newOwner || !newPhone) return showNotification("Alanları doldurun.", true);
-                      const updated = [...data.apartments, { id: Date.now(), no: newAptNo, owner: newOwner, phone: newPhone, monthlyFee: newFee !== "" ? Number(newFee) : defaultFee }];
+                      const updated = [...data.apartments, { id: Date.now(), no: newAptNo, owner: newOwner, phone: newPhone, monthlyFee: newFee !== "" ? round2(newFee) : defaultFee }];
                       saveData({ ...data, apartments: updated });
                       setNewAptNo(""); setNewOwner(""); setNewPhone(""); setNewFee("");
                       showNotification("Daire eklendi.");
@@ -715,7 +733,7 @@ export default function App() {
                           <td className="p-3 font-bold">{apt.no}{isManagerForMonth(apt.no, selectedYear, new Date().getMonth()) && selectedYear === currentYear && <span className="ml-2 text-[10px] bg-amber-100 text-amber-800 px-2 py-1 rounded-full">Yönetici</span>}</td>
                           <td className="p-3">{apt.owner}</td>
                           <td className="p-3 font-mono">{apt.phone}</td>
-                          <td className="p-3 font-semibold text-emerald-600">{apt.monthlyFee ?? defaultFee} ₺</td>
+                          <td className="p-3 font-semibold text-emerald-600">{formatMoney(apt.monthlyFee ?? defaultFee)} ₺</td>
                           {MONTHS.map((_, mIdx) => {
                             const key = getPaymentKey(selectedYear, apt.no, mIdx);
                             const isPaid = !!data.payments[key];
@@ -794,11 +812,11 @@ export default function App() {
                   <h3 className="text-lg font-bold mb-4">Ekstra / Demirbaş Ekle</h3>
                   <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
                     <input type="text" placeholder="Kalem Adı" value={extraTitle} onChange={(e) => setExtraTitle(e.target.value)} className="px-4 py-2.5 border rounded-xl" />
-                    <input type="number" placeholder="Daire Başı Tutar" value={extraAmount} onChange={(e) => setExtraAmount(e.target.value)} className="px-4 py-2.5 border rounded-xl" />
+                    <input type="number" step="0.01" placeholder="Daire Başı Tutar" value={extraAmount} onChange={(e) => setExtraAmount(e.target.value)} className="px-4 py-2.5 border rounded-xl" />
                     <input type="date" value={extraDate} onChange={(e) => setExtraDate(e.target.value)} className="px-4 py-2.5 border rounded-xl" />
                     <button onClick={() => {
                       if (!extraTitle || !extraAmount) return showNotification("Alanları doldurun.", true);
-                      saveData({ ...data, extraItems: [{ id: Date.now(), title: extraTitle, amountPerApt: Number(extraAmount), date: extraDate }, ...(data.extraItems || [])] });
+                      saveData({ ...data, extraItems: [{ id: Date.now(), title: extraTitle, amountPerApt: round2(extraAmount), date: extraDate }, ...(data.extraItems || [])] });
                       setExtraTitle(""); setExtraAmount("");
                       showNotification("Ekstra eklendi.");
                     }} className="bg-indigo-600 text-white font-semibold py-2.5 rounded-xl">Ekle</button>
@@ -807,7 +825,7 @@ export default function App() {
                 {(data.extraItems || []).map(item => (
                   <div key={item.id} className="bg-white p-6 rounded-2xl border">
                     <div className="flex justify-between items-center mb-4 pb-2 border-b">
-                      <h4 className="font-bold">{item.title} ({item.amountPerApt} ₺ / Daire)</h4>
+                      <h4 className="font-bold">{item.title} ({formatMoney(item.amountPerApt)} ₺ / Daire)</h4>
                       <button onClick={() => saveData({ ...data, extraItems: data.extraItems.filter(i => i.id !== item.id) })} className="text-rose-600 text-xs"><Trash2 className="w-4 h-4 inline" /> Sil</button>
                     </div>
                     <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3">
@@ -834,7 +852,7 @@ export default function App() {
                   <div className="space-y-4">
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                       <input type="text" placeholder="Harcama Açıklaması" value={expTitle} onChange={(e) => setExpTitle(e.target.value)} className="px-4 py-2.5 border rounded-xl" />
-                      <input type="number" placeholder="Tutar (₺)" value={expAmount} onChange={(e) => setExpAmount(e.target.value)} className="px-4 py-2.5 border rounded-xl" />
+                      <input type="number" step="0.01" placeholder="Tutar (₺)" value={expAmount} onChange={(e) => setExpAmount(e.target.value)} className="px-4 py-2.5 border rounded-xl" />
                       <input type="date" value={expDate} onChange={(e) => setExpDate(e.target.value)} className="px-4 py-2.5 border rounded-xl" />
                       <select value={expCat} onChange={(e) => setExpCat(e.target.value)} className="px-4 py-2.5 border rounded-xl">
                         <option value="Genel">Genel Gider</option>
@@ -867,7 +885,7 @@ export default function App() {
 
                     <button onClick={() => {
                       if (!expTitle || !expAmount) return showNotification("Açıklama ve tutar girin.", true);
-                      saveData({ ...data, expenses: [{ id: Date.now(), title: expTitle, amount: Number(expAmount), date: expDate, category: expCat, receiptImage: expReceipt }, ...data.expenses] });
+                      saveData({ ...data, expenses: [{ id: Date.now(), title: expTitle, amount: round2(expAmount), date: expDate, category: expCat, receiptImage: expReceipt }, ...data.expenses] });
                       setExpTitle(""); setExpAmount(""); setExpReceipt("");
                       showNotification("Harcama eklendi.");
                     }} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3.5 rounded-xl shadow flex items-center justify-center gap-2">
@@ -897,7 +915,7 @@ export default function App() {
                               </button>
                             ) : <span className="text-slate-300">-</span>}
                           </td>
-                          <td className="p-3 text-right font-bold text-rose-600">-{exp.amount} ₺</td>
+                          <td className="p-3 text-right font-bold text-rose-600">-{formatMoney(exp.amount)} ₺</td>
                           <td className="p-3 text-right"><button onClick={() => saveData({ ...data, expenses: data.expenses.filter(e => e.id !== exp.id) })} className="text-rose-500"><Trash2 className="w-4 h-4" /></button></td>
                         </tr>
                       ))}
@@ -979,11 +997,11 @@ export default function App() {
                   <h3 className="text-lg font-bold mb-2">Önceki Yıldan Devir</h3>
                   <p className="text-sm text-slate-500 mb-3">Geçen yıldan bu yıla devreden kasa bakiyesini girin.</p>
                   <div className="flex gap-3 items-center">
-                    <input type="number" value={previousYearBalanceInput} onChange={(e) => setPreviousYearBalanceInput(e.target.value)} className="flex-1 min-w-0 px-4 py-2.5 border rounded-xl font-bold text-lg" placeholder="Devir tutarı" />
+                    <input type="number" step="0.01" value={previousYearBalanceInput} onChange={(e) => setPreviousYearBalanceInput(e.target.value)} className="flex-1 min-w-0 px-4 py-2.5 border rounded-xl font-bold text-lg" placeholder="Devir tutarı" />
                     <span className="font-semibold text-slate-500">₺</span>
                   </div>
                   <button type="button" onClick={() => {
-                    const amount = Number(previousYearBalanceInput);
+                    const amount = round2(previousYearBalanceInput);
                     if (!Number.isFinite(amount)) return showNotification("Geçerli bir devir tutarı girin.", true);
                     saveData({ ...data, previousYearBalance: amount });
                     showNotification("Devir tutarı kaydedildi.");
@@ -992,16 +1010,16 @@ export default function App() {
                 <div className="bg-white p-6 rounded-2xl border flex flex-col justify-between">
                   <div>
                     <h3 className="text-lg font-bold mb-2">Varsayılan Aylık Aidat</h3>
-                    <input type="number" value={defaultFeeInput} onChange={(e) => setDefaultFeeInput(e.target.value)} className="w-full px-4 py-2.5 border rounded-xl font-bold text-lg text-emerald-700" />
+                    <input type="number" step="0.01" value={defaultFeeInput} onChange={(e) => setDefaultFeeInput(e.target.value)} className="w-full px-4 py-2.5 border rounded-xl font-bold text-lg text-emerald-700" />
                   </div>
                   <div className="mt-6 flex gap-3">
                     <button onClick={() => {
-                      const val = Number(defaultFeeInput);
+                      const val = round2(defaultFeeInput);
                       saveData({ ...data, defaultMonthlyFee: val });
                       showNotification("Kaydedildi.");
                     }} className="flex-1 bg-emerald-600 text-white py-2.5 rounded-xl font-semibold">Kaydet</button>
                     <button onClick={() => {
-                      const val = Number(defaultFeeInput);
+                      const val = round2(defaultFeeInput);
                       saveData({ ...data, defaultMonthlyFee: val, apartments: data.apartments.map(a => ({ ...a, monthlyFee: val })) });
                       showNotification("Tüm dairelere uygulandı.");
                     }} className="flex-1 bg-blue-600 text-white py-2.5 rounded-xl font-semibold">Tümüne Uygula</button>
@@ -1095,13 +1113,14 @@ export default function App() {
           (() => {
             const currentApt = data.apartments.find(a => a.no === session.aptNo);
             if (!currentApt) return <p>Daire bulunamadı.</p>;
-            const aptFee = currentApt.monthlyFee !== undefined ? Number(currentApt.monthlyFee) : defaultFee;
+            const aptFee = currentApt.monthlyFee !== undefined ? round2(currentApt.monthlyFee) : defaultFee;
             let paidMonthsCount = 0;
             MONTHS.forEach((_, idx) => {
               if (!isManagerForMonth(currentApt.no, selectedYear, idx) && data.payments[getPaymentKey(selectedYear, currentApt.no, idx)]) paidMonthsCount++;
             });
-            const totalFeePaid = paidMonthsCount * aptFee;
-            const totalExtraPaid = (data.extraItems || []).reduce((acc, item) => data.extraPayments?.[`${item.id}_${currentApt.no}`] ? acc + Number(item.amountPerApt || 0) : acc, 0);
+            const totalFeePaid = round2(paidMonthsCount * aptFee);
+            const totalExtraPaid = round2((data.extraItems || []).reduce((acc, item) => data.extraPayments?.[`${item.id}_${currentApt.no}`] ? acc + round2(item.amountPerApt || 0) : acc, 0));
+            const residentTotalPaid = round2(totalFeePaid + totalExtraPaid);
 
             const lastTwoCleanings = [...(data.cleaningLogs || [])].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 2);
             const lastTwoElevators = [...(data.elevatorLogs || [])].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 2);
@@ -1127,15 +1146,15 @@ export default function App() {
                   <div className="flex flex-wrap gap-3">
                     <div className="bg-white/10 p-3 rounded-2xl text-center min-w-[110px]">
                       <p className="text-[11px] text-blue-200">Toplam Ödemeniz</p>
-                      <p className="text-lg font-bold">{totalFeePaid + totalExtraPaid} ₺</p>
+                      <p className="text-lg font-bold">{formatMoney(residentTotalPaid)} ₺</p>
                     </div>
                     <div className="bg-white/10 p-3 rounded-2xl text-center min-w-[110px]">
                       <p className="text-[11px] text-blue-200">Toplam Harcanan</p>
-                      <p className="text-lg font-bold text-rose-300">{totalExpenses} ₺</p>
+                      <p className="text-lg font-bold text-rose-300">{formatMoney(totalExpenses)} ₺</p>
                     </div>
                     <div className="bg-white/10 p-3 rounded-2xl text-center min-w-[110px]">
                       <p className="text-[11px] text-blue-200">Kasada Kalan</p>
-                      <p className="text-lg font-bold text-emerald-300">{netBalance} ₺</p>
+                      <p className="text-lg font-bold text-emerald-300">{formatMoney(netBalance)} ₺</p>
                     </div>
                   </div>
                 </div>
@@ -1203,7 +1222,7 @@ export default function App() {
                           <div key={item.id} className={`p-4 rounded-xl border flex justify-between items-center ${isPaid ? 'bg-emerald-50 border-emerald-200 text-emerald-900' : 'bg-slate-50'}`}>
                             <div>
                               <p className="font-bold text-sm">{item.title}</p>
-                              <p className="text-xs text-slate-500 mt-0.5">Tarih: {item.date} • Tutar: <span className="font-semibold text-slate-700">{item.amountPerApt} ₺</span></p>
+                              <p className="text-xs text-slate-500 mt-0.5">Tarih: {item.date} • Tutar: <span className="font-semibold text-slate-700">{formatMoney(item.amountPerApt)} ₺</span></p>
                             </div>
                             <span className={`text-xs font-bold px-3 py-1 rounded-full ${isPaid ? 'bg-emerald-600 text-white' : 'bg-amber-100 text-amber-800'}`}>
                               {isPaid ? 'Ödendi ✓' : 'Ödenmedi'}
@@ -1251,7 +1270,7 @@ export default function App() {
                                 </button>
                               ) : <span className="text-slate-300">-</span>}
                             </td>
-                            <td className="p-3 text-right font-bold text-rose-600">-{exp.amount} ₺</td>
+                            <td className="p-3 text-right font-bold text-rose-600">-{formatMoney(exp.amount)} ₺</td>
                           </tr>
                         ))}
                       </tbody>
