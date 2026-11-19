@@ -4,7 +4,7 @@ import { getFirestore, doc, setDoc, onSnapshot } from 'firebase/firestore';
 import { 
   Building2, Users, Wallet, Wrench, Shield, Key, Plus, Trash2, 
   CheckCircle2, AlertCircle, Phone, ArrowUpRight, 
-  Sparkles, RefreshCw, LogOut, FileText, Layers, DollarSign, Image as ImageIcon, X, Edit3
+  Sparkles, RefreshCw, LogOut, FileText, Layers, DollarSign, Image as ImageIcon, X, Edit3, Eye
 } from 'lucide-react';
 
 const firebaseConfig = {
@@ -89,6 +89,7 @@ export default function App() {
   const [expReceipt, setExpReceipt] = useState("");
 
   const [viewingImage, setViewingImage] = useState(null);
+  const [showAllExpensesModal, setShowAllExpensesModal] = useState(false);
 
   const [cleaningDate, setCleaningDate] = useState(new Date().toISOString().split('T')[0]);
   const [cleaningPerson, setCleaningPerson] = useState("");
@@ -284,6 +285,55 @@ export default function App() {
               <img src={viewingImage} alt="Fiş Görseli" className="max-w-full h-auto object-contain rounded-lg" />
             </div>
             <button onClick={() => setViewingImage(null)} className="mt-4 bg-slate-900 text-white px-6 py-2 rounded-xl text-sm font-semibold">Kapat</button>
+          </div>
+        </div>
+      )}
+
+      {/* Tüm Harcamalar Modal Penceresi */}
+      {showAllExpensesModal && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-3xl w-full p-6 relative shadow-2xl flex flex-col max-h-[85vh]">
+            <div className="flex justify-between items-center mb-4 pb-3 border-b">
+              <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                <FileText className="w-5 h-5 text-emerald-600" /> Tüm Apartman Harcamaları ve Fiş Arşivi
+              </h3>
+              <button onClick={() => setShowAllExpensesModal(false)} className="bg-slate-100 p-2 rounded-full hover:bg-slate-200">
+                <X className="w-5 h-5 text-slate-700" />
+              </button>
+            </div>
+            <div className="overflow-auto flex-1 w-full">
+              <table className="w-full text-left text-sm">
+                <thead>
+                  <tr className="border-b bg-slate-50 sticky top-0">
+                    <th className="p-3">Tarih</th>
+                    <th className="p-3">Kategori</th>
+                    <th className="p-3">Açıklama</th>
+                    <th className="p-3 text-center">Fiş</th>
+                    <th className="p-3 text-right">Tutar</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {data.expenses.map(exp => (
+                    <tr key={exp.id}>
+                      <td className="p-3 font-mono text-xs">{exp.date}</td>
+                      <td className="p-3"><span className="bg-slate-100 px-2.5 py-1 rounded text-xs">{exp.category}</span></td>
+                      <td className="p-3 font-medium">{exp.title}</td>
+                      <td className="p-3 text-center">
+                        {exp.receiptImage ? (
+                          <button onClick={() => setViewingImage(exp.receiptImage)} className="bg-blue-50 text-blue-600 px-2.5 py-1 rounded text-xs font-semibold inline-flex items-center gap-1">
+                            <ImageIcon className="w-3.5 h-3.5" /> Fişi Gör
+                          </button>
+                        ) : <span className="text-slate-300">-</span>}
+                      </td>
+                      <td className="p-3 text-right font-bold text-rose-600">-{exp.amount} ₺</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="mt-4 pt-3 border-t flex justify-end">
+              <button onClick={() => setShowAllExpensesModal(false)} className="bg-slate-900 text-white px-6 py-2 rounded-xl text-sm font-semibold">Kapat</button>
+            </div>
           </div>
         </div>
       )}
@@ -848,6 +898,7 @@ export default function App() {
 
             const lastTwoCleanings = [...(data.cleaningLogs || [])].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 2);
             const lastTwoElevators = [...(data.elevatorLogs || [])].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 2);
+            const lastFiveExpenses = [...(data.expenses || [])].slice(0, 5);
 
             return (
               <div className="space-y-6 max-w-5xl mx-auto">
@@ -919,32 +970,51 @@ export default function App() {
                   )}
                 </div>
 
+                {/* Son 5 Harcama Tablosu */}
                 <div className="bg-white p-6 rounded-2xl border">
-                  <h3 className="text-lg font-bold mb-4">Apartman Harcamaları & Fişler</h3>
-                  <table className="w-full text-left text-sm">
-                    <thead>
-                      <tr className="border-b bg-slate-50">
-                        <th className="p-3">Tarih</th><th className="p-3">Kategori</th><th className="p-3">Açıklama</th><th className="p-3 text-center">Fiş</th><th className="p-3 text-right">Tutar</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y">
-                      {data.expenses.map(exp => (
-                        <tr key={exp.id}>
-                          <td className="p-3 font-mono text-xs">{exp.date}</td>
-                          <td className="p-3"><span className="bg-slate-100 px-2.5 py-1 rounded text-xs">{exp.category}</span></td>
-                          <td className="p-3 font-medium">{exp.title}</td>
-                          <td className="p-3 text-center">
-                            {exp.receiptImage ? (
-                              <button onClick={() => setViewingImage(exp.receiptImage)} className="bg-blue-50 text-blue-600 px-2.5 py-1 rounded text-xs font-semibold inline-flex items-center gap-1">
-                                <ImageIcon className="w-3.5 h-3.5" /> Fişi Gör
-                              </button>
-                            ) : <span className="text-slate-300">-</span>}
-                          </td>
-                          <td className="p-3 text-right font-bold text-rose-600">-{exp.amount} ₺</td>
+                  <div className="flex justify-between items-center mb-4">
+                    <div>
+                      <h3 className="text-lg font-bold">Son Harcamalar</h3>
+                      <p className="text-xs text-slate-500">Apartman bütçesinden yapılan en son harcamalar</p>
+                    </div>
+                    {data.expenses.length > 5 && (
+                      <button onClick={() => setShowAllExpensesModal(true)} className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 transition">
+                        <Eye className="w-4 h-4 text-emerald-600" /> Tüm Harcamaları Gör ({data.expenses.length})
+                      </button>
+                    )}
+                  </div>
+                  {data.expenses.length === 0 ? (
+                    <p className="text-xs text-slate-400">Henüz harcama kaydı bulunmuyor.</p>
+                  ) : (
+                    <table className="w-full text-left text-sm">
+                      <thead>
+                        <tr className="border-b bg-slate-50">
+                          <th className="p-3">Tarih</th>
+                          <th className="p-3">Kategori</th>
+                          <th className="p-3">Açıklama</th>
+                          <th className="p-3 text-center">Fiş</th>
+                          <th className="p-3 text-right">Tutar</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody className="divide-y">
+                        {lastFiveExpenses.map(exp => (
+                          <tr key={exp.id}>
+                            <td className="p-3 font-mono text-xs">{exp.date}</td>
+                            <td className="p-3"><span className="bg-slate-100 px-2.5 py-1 rounded text-xs">{exp.category}</span></td>
+                            <td className="p-3 font-medium">{exp.title}</td>
+                            <td className="p-3 text-center">
+                              {exp.receiptImage ? (
+                                <button onClick={() => setViewingImage(exp.receiptImage)} className="bg-blue-50 text-blue-600 px-2.5 py-1 rounded text-xs font-semibold inline-flex items-center gap-1">
+                                  <ImageIcon className="w-3.5 h-3.5" /> Fişi Gör
+                                </button>
+                              ) : <span className="text-slate-300">-</span>}
+                            </td>
+                            <td className="p-3 text-right font-bold text-rose-600">-{exp.amount} ₺</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
