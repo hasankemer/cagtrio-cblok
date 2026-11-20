@@ -98,13 +98,37 @@ const normalizeData = (raw) => ({
   })(),
   extraItems: (raw?.extraItems || []).map(item => ({ ...item, amountPerApt: round2(item.amountPerApt) })),
   extraPayments: raw?.extraPayments || {},
-  expenses: (raw?.expenses || []).map(e => ({ ...e, amount: round2(e.amount), receiptImage: e.receiptImage || "" })),
+  expenses: Array.isArray(raw?.expenses)
+    ? raw.expenses.map(e => ({ ...e, amount: round2(e.amount), receiptImage: e.receiptImage || "" }))
+    : [],
   cleaningLogs: raw?.cleaningLogs || [],
   elevatorLogs: raw?.elevatorLogs || [],
   loginLogs: Array.isArray(raw?.loginLogs) ? raw.loginLogs : [],
   announcement: raw?.announcement !== undefined ? raw.announcement : INITIAL_DATA.announcement,
   requests: Array.isArray(raw?.requests) ? raw.requests : []
 });
+
+const compressImageToBase64 = (file, maxWidth = 900, quality = 0.65) =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Dosya okunamadı."));
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onerror = () => reject(new Error("Görsel işlenemedi."));
+      img.onload = () => {
+        const scale = img.width > maxWidth ? maxWidth / img.width : 1;
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        const compressed = canvas.toDataURL("image/jpeg", quality);
+        resolve(compressed);
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
 
 export default function App() {
   const [data, setData] = useState(INITIAL_DATA);
@@ -137,6 +161,7 @@ export default function App() {
   const [expDate, setExpDate] = useState(new Date().toISOString().split('T')[0]);
   const [expCat, setExpCat] = useState("Genel");
   const [expReceipt, setExpReceipt] = useState("");
+  const [savingExpense, setSavingExpense] = useState(false);
 
   const [viewingImage, setViewingImage] = useState(null);
   const [showAllExpensesModal, setShowAllExpensesModal] = useState(false);
@@ -160,6 +185,11 @@ export default function App() {
 
   const [backupBusy, setBackupBusy] = useState(false);
   const backupFileInputRef = useRef(null);
+  const dataRef = useRef(INITIAL_DATA);
+
+  useEffect(() => {
+    dataRef.current = data;
+  }, [data]);
 
   useEffect(() => {
     if (!db || !isFirebaseConnected) {
@@ -168,10 +198,11 @@ export default function App() {
         try {
           const parsed = normalizeData(JSON.parse(saved));
           setData(parsed);
+          dataRef.current = parsed;
           setDefaultFeeInput(String(parsed.defaultMonthlyFee));
           setPreviousYearBalanceInput(String(parsed.previousYearBalance ?? 0));
           setAnnouncementInput(parsed.announcement || "");
-        } catch(e) {}
+        } catch (e) {}
       } else {
         setDefaultFeeInput(String(INITIAL_DATA.defaultMonthlyFee));
         setPreviousYearBalanceInput(String(INITIAL_DATA.previousYearBalance));
@@ -186,18 +217,21 @@ export default function App() {
       if (docSnap.exists()) {
         const normalized = normalizeData(docSnap.data());
         setData(normalized);
+        dataRef.current = normalized;
         setDefaultFeeInput(String(normalized.defaultMonthlyFee));
         setPreviousYearBalanceInput(String(normalized.previousYearBalance ?? 0));
         setAnnouncementInput(normalized.announcement || "");
       } else {
         setDoc(docRef, INITIAL_DATA);
         setData(INITIAL_DATA);
+        dataRef.current = INITIAL_DATA;
         setDefaultFeeInput(String(INITIAL_DATA.defaultMonthlyFee));
         setPreviousYearBalanceInput(String(INITIAL_DATA.previousYearBalance));
         setAnnouncementInput(INITIAL_DATA.announcement);
       }
       setLoading(false);
     }, (error) => {
+      console.error("Firestore dinleme hatası:", error);
       setLoading(false);
     });
 
@@ -205,34 +239,102 @@ export default function App() {
   }, []);
 
   const saveData = async (newData) => {
-    setData(newData);
+    const normalized = normalizeData(newData);
+    const jsonSize = new Blob([JSON.stringify(normalized)]).size;
+    if (jsonSize > 950000) {
+      throw new Error("Veri boyutu 1 MB sınırına yaklaştı. Fiş görsellerini küçültün veya kaldırın.");
+    }
+
+    setData(normalized);
+    dataRef.current = normalized;
+    localStorage.setItem("cagtrio_c_blok_v2", JSON.stringify(normalized));
+
     if (db && isFirebaseConnected) {
-      try {
-        await setDoc(doc(db, "cagtrio", "c_blok_data"), newData);
-      } catch (e) {}
-    } else {
-      localStorage.setItem("cagtrio_c_blok_v2", JSON.stringify(newData));
+      await setDoc(doc(db, "cagtrio", "c_blok_data"), normalized);
     }
   };
 
   const showNotification = (msg, isError = false) => {
     if (isError) {
       setErrorMsg(msg);
-      setTimeout(() => setErrorMsg(""), 4000);
+      setTimeout(() => setErrorMsg(""), 5000);
     } else {
       setSuccessMsg(msg);
       setTimeout(() => setSuccessMsg(""), 4000);
     }
   };
 
+  const handleAddExpense = async () => {
+    const trimmedTitle = expTitle.trim();
+    const numericAmount = Number(expAmount);
+
+    if (!trimmedTitle) {
+      return showNotification("Lütfen harcama açıklaması girin.", true);
+    }
+    if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+      return showNotification("Lütfen geçerli ve 0'dan büyük bir tutar girin.", true);
+    }
+
+    setSavingExpense(true);
+    try {
+      const newExpense = {
+        id: Date.now(),
+        title: trimmedTitle,
+        amount: round2(numericAmount),
+        date: expDate || new Date().toISOString().split('T')[0],
+        category: expCat || "Genel",
+        receiptImage: expReceipt || ""
+      };
+
+      const currentExpenses = Array.isArray(dataRef.current?.expenses) ? dataRef.current.expenses : [];
+      const updatedData = {
+        ...dataRef.current,
+        expenses: [newExpense, ...currentExpenses]
+      };
+
+      await saveData(updatedData);
+      setExpTitle("");
+      setExpAmount("");
+      setExpReceipt("");
+      showNotification("Harcama kalemi kalıcı olarak kaydedildi.");
+    } catch (err) {
+      console.error("Harcama kayıt hatası:", err);
+      showNotification(
+        err?.message || "Harcama Firebase'e kaydedilemedi (izin veya boyut hatası).",
+        true
+      );
+    } finally {
+      setSavingExpense(false);
+    }
+  };
+
+  const handleDeleteExpense = async (expenseId) => {
+    try {
+      const currentExpenses = Array.isArray(dataRef.current?.expenses) ? dataRef.current.expenses : [];
+      const updatedData = {
+        ...dataRef.current,
+        expenses: currentExpenses.filter(e => e.id !== expenseId)
+      };
+      await saveData(updatedData);
+      showNotification("Harcama kalemi silindi.");
+    } catch (err) {
+      console.error("Harcama silme hatası:", err);
+      showNotification("Harcama silinirken hata oluştu.", true);
+    }
+  };
+
   const handleToggleResidentTotals = async () => {
-    const nextValue = !data.showResidentTotals;
-    await saveData({ ...data, showResidentTotals: nextValue });
-    showNotification(
-      nextValue
-        ? "Sakin ekranında toplam harcanan ve kasa bilgileri açıldı."
-        : "Sakin ekranında toplam harcanan ve kasa bilgileri gizlendi."
-    );
+    const nextValue = !dataRef.current.showResidentTotals;
+    try {
+      await saveData({ ...dataRef.current, showResidentTotals: nextValue });
+      showNotification(
+        nextValue
+          ? "Sakin ekranında toplam harcanan ve kasa bilgileri açıldı."
+          : "Sakin ekranında toplam harcanan ve kasa bilgileri gizlendi."
+      );
+    } catch (err) {
+      showNotification("Ayar kaydedilemedi.", true);
+    }
   };
 
   const handleExportBackup = () => {
@@ -241,7 +343,7 @@ export default function App() {
       const backupPayload = {
         exportedAt: new Date().toISOString(),
         project: "cagtrio-cblok",
-        data
+        data: dataRef.current
       };
       const jsonStr = JSON.stringify(backupPayload, null, 2);
       const blob = new Blob([jsonStr], { type: "application/json;charset=utf-8" });
@@ -342,19 +444,22 @@ export default function App() {
     }
   };
 
-  const handleImageUpload = (e) => {
-    const file = e.target.files[0];
+  const handleImageUpload = async (e) => {
+    const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 1024 * 1024 * 2) {
-      showNotification("Fiş görseli çok büyük (Maksimum 2MB olmalı).", true);
-      return;
+    try {
+      const compressedBase64 = await compressImageToBase64(file, 900, 0.65);
+      if (compressedBase64.length > 550000) {
+        return showNotification("Fiş görseli sıkıştırıldıktan sonra bile çok büyük. Daha küçük bir görsel seçin.", true);
+      }
+      setExpReceipt(compressedBase64);
+      showNotification("Fiş görseli optimize edilerek eklendi.");
+    } catch (err) {
+      console.error(err);
+      showNotification("Fiş görseli yüklenemedi.", true);
+    } finally {
+      e.target.value = "";
     }
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setExpReceipt(reader.result);
-      showNotification("Fiş görseli başarıyla seçildi.");
-    };
-    reader.readAsDataURL(file);
   };
 
   const getPaymentKey = (year, aptNo, monthIndex) => `${year}_${aptNo}_${monthIndex}`;
@@ -569,8 +674,8 @@ export default function App() {
 
       {(errorMsg || successMsg) && (
         <div className="max-w-7xl mx-auto w-full px-4 mt-4">
-          {errorMsg && <div className="bg-rose-50 border-l-4 border-rose-500 text-rose-700 p-4 rounded-r">{errorMsg}</div>}
-          {successMsg && <div className="bg-emerald-50 border-l-4 border-emerald-500 text-emerald-700 p-4 rounded-r">{successMsg}</div>}
+          {errorMsg && <div className="bg-rose-50 border-l-4 border-rose-500 text-rose-700 p-4 rounded-r font-medium">{errorMsg}</div>}
+          {successMsg && <div className="bg-emerald-50 border-l-4 border-emerald-500 text-emerald-700 p-4 rounded-r font-medium">{successMsg}</div>}
         </div>
       )}
 
@@ -1027,7 +1132,7 @@ export default function App() {
                         </div>
                         <div>
                           <p className="text-sm font-bold">Fiş / Fatura Görseli (İsteğe Bağlı)</p>
-                          <p className="text-xs text-slate-500">{expReceipt ? "Fotoğraf seçildi ✓" : "Fotoğraf yüklemek için seçin"}</p>
+                          <p className="text-xs text-slate-500">{expReceipt ? "Fotoğraf eklendi ✓" : "Fotoğraf yüklemek için seçin"}</p>
                         </div>
                       </div>
                       <div className="flex items-center gap-2 w-full sm:w-auto">
@@ -1035,17 +1140,17 @@ export default function App() {
                           <span>{expReceipt ? "Değiştir" : "Fotoğraf Seç"}</span>
                           <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
                         </label>
-                        {expReceipt && <button onClick={() => setExpReceipt("")} className="bg-rose-50 text-rose-600 px-3 py-2.5 rounded-xl text-xs font-bold">Kaldır</button>}
+                        {expReceipt && <button type="button" onClick={() => setExpReceipt("")} className="bg-rose-50 text-rose-600 px-3 py-2.5 rounded-xl text-xs font-bold">Kaldır</button>}
                       </div>
                     </div>
 
-                    <button onClick={() => {
-                      if (!expTitle || !expAmount) return showNotification("Açıklama ve tutar girin.", true);
-                      saveData({ ...data, expenses: [{ id: Date.now(), title: expTitle, amount: round2(expAmount), date: expDate, category: expCat, receiptImage: expReceipt }, ...data.expenses] });
-                      setExpTitle(""); setExpAmount(""); setExpReceipt("");
-                      showNotification("Harcama eklendi.");
-                    }} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3.5 rounded-xl shadow flex items-center justify-center gap-2">
-                      <Plus className="w-5 h-5" /> Harcamayı ve Fişi Kaydet
+                    <button
+                      type="button"
+                      disabled={savingExpense}
+                      onClick={handleAddExpense}
+                      className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-semibold py-3.5 rounded-xl shadow flex items-center justify-center gap-2"
+                    >
+                      <Plus className="w-5 h-5" /> {savingExpense ? "Kaydediliyor..." : "Harcamayı ve Fişi Kaydet"}
                     </button>
                   </div>
                 </div>
@@ -1072,7 +1177,7 @@ export default function App() {
                             ) : <span className="text-slate-300">-</span>}
                           </td>
                           <td className="p-3 text-right font-bold text-rose-600">-{formatMoney(exp.amount)} ₺</td>
-                          <td className="p-3 text-right"><button onClick={() => saveData({ ...data, expenses: data.expenses.filter(e => e.id !== exp.id) })} className="text-rose-500"><Trash2 className="w-4 h-4" /></button></td>
+                          <td className="p-3 text-right"><button type="button" onClick={() => handleDeleteExpense(exp.id)} className="text-rose-500"><Trash2 className="w-4 h-4" /></button></td>
                         </tr>
                       ))}
                     </tbody>
