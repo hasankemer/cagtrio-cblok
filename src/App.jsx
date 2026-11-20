@@ -60,6 +60,16 @@ const MONTHS = [
   "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"
 ];
 
+const EXPENSE_CATEGORIES = [
+  { value: "Genel", label: "Genel Gider" },
+  { value: "Elektrik", label: "Elektrik" },
+  { value: "Su", label: "Su" },
+  { value: "Temizlik", label: "Temizlik" },
+  { value: "Asansör", label: "Asansör" },
+  { value: "Demirbaş", label: "Demirbaş" },
+  { value: "Banka İşlemleri(EFT)", label: "Banka İşlemleri(EFT)" }
+];
+
 const round2 = (val) => {
   const num = Number(val);
   if (!Number.isFinite(num)) return 0;
@@ -754,12 +764,9 @@ export default function App() {
                   onChange={(e) => setEditingExpense({ ...editingExpense, category: e.target.value })}
                   className="w-full px-4 py-2.5 border rounded-xl bg-white"
                 >
-                  <option value="Genel">Genel Gider</option>
-                  <option value="Elektrik">Elektrik</option>
-                  <option value="Su">Su</option>
-                  <option value="Temizlik">Temizlik</option>
-                  <option value="Asansör">Asansör</option>
-                  <option value="Demirbaş">Demirbaş</option>
+                  {EXPENSE_CATEGORIES.map(cat => (
+                    <option key={cat.value} value={cat.value}>{cat.label}</option>
+                  ))}
                 </select>
               </div>
               <div>
@@ -1348,13 +1355,10 @@ export default function App() {
                       <input type="text" placeholder="Harcama Açıklaması" value={expTitle} onChange={(e) => setExpTitle(e.target.value)} className="px-4 py-2.5 border rounded-xl" />
                       <input type="number" step="0.01" placeholder="Tutar (₺)" value={expAmount} onChange={(e) => setExpAmount(e.target.value)} className="px-4 py-2.5 border rounded-xl" />
                       <input type="date" value={expDate} onChange={(e) => setExpDate(e.target.value)} className="px-4 py-2.5 border rounded-xl" />
-                      <select value={expCat} onChange={(e) => setExpCat(e.target.value)} className="px-4 py-2.5 border rounded-xl">
-                        <option value="Genel">Genel Gider</option>
-                        <option value="Elektrik">Elektrik</option>
-                        <option value="Su">Su</option>
-                        <option value="Temizlik">Temizlik</option>
-                        <option value="Asansör">Asansör</option>
-                        <option value="Demirbaş">Demirbaş</option>
+                      <select value={expCat} onChange={(e) => setExpCat(e.target.value)} className="px-4 py-2.5 border rounded-xl bg-white">
+                        {EXPENSE_CATEGORIES.map(cat => (
+                          <option key={cat.value} value={cat.value}>{cat.label}</option>
+                        ))}
                       </select>
                       <input
                         type="url"
