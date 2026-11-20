@@ -4,7 +4,7 @@ import { getFirestore, doc, setDoc, onSnapshot } from 'firebase/firestore';
 import { 
   Building2, Users, Wallet, Wrench, Shield, Key, Plus, Trash2, 
   CheckCircle2, AlertCircle, Phone, ArrowUpRight, 
-  Sparkles, RefreshCw, LogOut, FileText, Layers, DollarSign, Image as ImageIcon, X, Edit3, Eye, Activity, Bell, Printer, MessageSquarePlus, Lock, Download, Upload
+  Sparkles, RefreshCw, LogOut, FileText, Layers, DollarSign, Image as ImageIcon, X, Edit3, Eye, Activity, Bell, Printer, MessageSquarePlus, Lock, Download, Upload, ExternalLink
 } from 'lucide-react';
 
 const firebaseConfig = {
@@ -46,7 +46,7 @@ const INITIAL_DATA = {
   ],
   extraPayments: {},
   expenses: [
-    { id: 1, title: "Ocak Ayı Elektrik Faturası", amount: 450, date: "2026-01-15", category: "Elektrik", receiptImage: "" }
+    { id: 1, title: "Ocak Ayı Elektrik Faturası", amount: 450, date: "2026-01-15", category: "Elektrik", receiptImage: "", receiptUrl: "" }
   ],
   cleaningLogs: [],
   elevatorLogs: [],
@@ -77,6 +77,21 @@ const formatMoney = (val) => {
 
 const isFourDigitNumber = (val) => /^\d{4}$/.test(String(val || "").trim());
 
+const normalizeSafeUrl = (rawUrl) => {
+  const trimmed = String(rawUrl || "").trim();
+  if (!trimmed) return "";
+  const withProtocol = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  try {
+    const parsed = new URL(withProtocol);
+    if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+      return parsed.toString();
+    }
+    return "";
+  } catch {
+    return "";
+  }
+};
+
 const normalizeData = (raw) => ({
   ...INITIAL_DATA,
   ...(raw || {}),
@@ -99,7 +114,12 @@ const normalizeData = (raw) => ({
   extraItems: (raw?.extraItems || []).map(item => ({ ...item, amountPerApt: round2(item.amountPerApt) })),
   extraPayments: raw?.extraPayments || {},
   expenses: Array.isArray(raw?.expenses)
-    ? raw.expenses.map(e => ({ ...e, amount: round2(e.amount), receiptImage: e.receiptImage || "" }))
+    ? raw.expenses.map(e => ({
+        ...e,
+        amount: round2(e.amount),
+        receiptImage: e.receiptImage || "",
+        receiptUrl: normalizeSafeUrl(e.receiptUrl || "")
+      }))
     : [],
   cleaningLogs: raw?.cleaningLogs || [],
   elevatorLogs: raw?.elevatorLogs || [],
@@ -161,6 +181,7 @@ export default function App() {
   const [expDate, setExpDate] = useState(new Date().toISOString().split('T')[0]);
   const [expCat, setExpCat] = useState("Genel");
   const [expReceipt, setExpReceipt] = useState("");
+  const [expReceiptUrl, setExpReceiptUrl] = useState("");
   const [savingExpense, setSavingExpense] = useState(false);
 
   const [viewingImage, setViewingImage] = useState(null);
@@ -242,7 +263,7 @@ export default function App() {
     const normalized = normalizeData(newData);
     const jsonSize = new Blob([JSON.stringify(normalized)]).size;
     if (jsonSize > 950000) {
-      throw new Error("Veri boyutu 1 MB sınırına yaklaştı. Fiş görsellerini küçültün veya kaldırın.");
+      throw new Error("Veri boyutu 1 MB sınırına yaklaştı. Fiş görsellerini küçültün veya Google Drive linki kullanın.");
     }
 
     setData(normalized);
@@ -264,6 +285,34 @@ export default function App() {
     }
   };
 
+  const renderReceiptAction = (exp) => {
+    const safeUrl = normalizeSafeUrl(exp?.receiptUrl);
+    if (safeUrl) {
+      return (
+        <a
+          href={safeUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded text-xs font-semibold inline-flex items-center gap-1"
+        >
+          <ExternalLink className="w-3.5 h-3.5" /> Fişi Aç
+        </a>
+      );
+    }
+    if (exp?.receiptImage) {
+      return (
+        <button
+          type="button"
+          onClick={() => setViewingImage(exp.receiptImage)}
+          className="bg-blue-50 hover:bg-blue-100 text-blue-600 px-2.5 py-1 rounded text-xs font-semibold inline-flex items-center gap-1"
+        >
+          <ImageIcon className="w-3.5 h-3.5" /> Gör
+        </button>
+      );
+    }
+    return <span className="text-slate-300">-</span>;
+  };
+
   const handleAddExpense = async () => {
     const trimmedTitle = expTitle.trim();
     const numericAmount = Number(expAmount);
@@ -275,6 +324,11 @@ export default function App() {
       return showNotification("Lütfen geçerli ve 0'dan büyük bir tutar girin.", true);
     }
 
+    const cleanedUrl = normalizeSafeUrl(expReceiptUrl);
+    if (expReceiptUrl.trim() && !cleanedUrl) {
+      return showNotification("Lütfen geçerli bir fiş linki (örneğin https://drive.google.com/...) girin.", true);
+    }
+
     setSavingExpense(true);
     try {
       const newExpense = {
@@ -283,7 +337,8 @@ export default function App() {
         amount: round2(numericAmount),
         date: expDate || new Date().toISOString().split('T')[0],
         category: expCat || "Genel",
-        receiptImage: expReceipt || ""
+        receiptImage: cleanedUrl ? "" : (expReceipt || ""),
+        receiptUrl: cleanedUrl
       };
 
       const currentExpenses = Array.isArray(dataRef.current?.expenses) ? dataRef.current.expenses : [];
@@ -296,6 +351,7 @@ export default function App() {
       setExpTitle("");
       setExpAmount("");
       setExpReceipt("");
+      setExpReceiptUrl("");
       showNotification("Harcama kalemi kalıcı olarak kaydedildi.");
     } catch (err) {
       console.error("Harcama kayıt hatası:", err);
@@ -450,9 +506,10 @@ export default function App() {
     try {
       const compressedBase64 = await compressImageToBase64(file, 900, 0.65);
       if (compressedBase64.length > 550000) {
-        return showNotification("Fiş görseli sıkıştırıldıktan sonra bile çok büyük. Daha küçük bir görsel seçin.", true);
+        return showNotification("Fiş görseli sıkıştırıldıktan sonra bile çok büyük. Google Drive linki kullanmanız önerilir.", true);
       }
       setExpReceipt(compressedBase64);
+      setExpReceiptUrl("");
       showNotification("Fiş görseli optimize edilerek eklendi.");
     } catch (err) {
       console.error(err);
@@ -569,13 +626,7 @@ export default function App() {
                     <tr key={exp.id}>
                       <td className="p-3 font-mono text-xs">{exp.date}</td>
                       <td className="p-3 font-medium">{exp.title}</td>
-                      <td className="p-3 text-center">
-                        {exp.receiptImage ? (
-                          <button onClick={() => setViewingImage(exp.receiptImage)} className="bg-blue-50 text-blue-600 px-2.5 py-1 rounded text-xs font-semibold inline-flex items-center gap-1">
-                            <ImageIcon className="w-3.5 h-3.5" /> Fişi Gör
-                          </button>
-                        ) : <span className="text-slate-300">-</span>}
-                      </td>
+                      <td className="p-3 text-center">{renderReceiptAction(exp)}</td>
                       <td className="p-3 text-right font-bold text-rose-600">-{formatMoney(exp.amount)} ₺</td>
                     </tr>
                   ))}
@@ -1109,7 +1160,7 @@ export default function App() {
             {activeTab === 'finances' && (
               <div className="space-y-6">
                 <div className="bg-white p-6 rounded-2xl border">
-                  <h3 className="text-lg font-bold mb-4 flex items-center gap-2"><FileText className="w-5 h-5 text-emerald-600" /> Harcama Kalemi & Fiş Görseli Ekle</h3>
+                  <h3 className="text-lg font-bold mb-4 flex items-center gap-2"><FileText className="w-5 h-5 text-emerald-600" /> Harcama Kalemi & Fiş Bağlantısı / Görseli Ekle</h3>
                   <div className="space-y-4">
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                       <input type="text" placeholder="Harcama Açıklaması" value={expTitle} onChange={(e) => setExpTitle(e.target.value)} className="px-4 py-2.5 border rounded-xl" />
@@ -1123,6 +1174,16 @@ export default function App() {
                         <option value="Asansör">Asansör</option>
                         <option value="Demirbaş">Demirbaş</option>
                       </select>
+                      <input
+                        type="url"
+                        placeholder="Google Drive Fiş Linki (İsteğe Bağlı)"
+                        value={expReceiptUrl}
+                        onChange={(e) => {
+                          setExpReceiptUrl(e.target.value);
+                          if (e.target.value.trim()) setExpReceipt("");
+                        }}
+                        className="sm:col-span-2 px-4 py-2.5 border rounded-xl text-sm"
+                      />
                     </div>
 
                     <div className="p-4 bg-slate-50 rounded-xl border border-dashed border-slate-300 flex flex-col sm:flex-row items-center justify-between gap-4">
@@ -1131,8 +1192,14 @@ export default function App() {
                           <ImageIcon className="w-5 h-5" />
                         </div>
                         <div>
-                          <p className="text-sm font-bold">Fiş / Fatura Görseli (İsteğe Bağlı)</p>
-                          <p className="text-xs text-slate-500">{expReceipt ? "Fotoğraf eklendi ✓" : "Fotoğraf yüklemek için seçin"}</p>
+                          <p className="text-sm font-bold">Fiş / Fatura Görseli veya Drive Linki</p>
+                          <p className="text-xs text-slate-500">
+                            {expReceiptUrl.trim()
+                              ? "Google Drive linki kullanılacak (1 MB sınırını yormaz) ✓"
+                              : expReceipt
+                                ? "Fotoğraf eklendi ✓"
+                                : "Drive linki yapıştırın veya küçük bir fotoğraf seçin"}
+                          </p>
                         </div>
                       </div>
                       <div className="flex items-center gap-2 w-full sm:w-auto">
@@ -1140,7 +1207,18 @@ export default function App() {
                           <span>{expReceipt ? "Değiştir" : "Fotoğraf Seç"}</span>
                           <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
                         </label>
-                        {expReceipt && <button type="button" onClick={() => setExpReceipt("")} className="bg-rose-50 text-rose-600 px-3 py-2.5 rounded-xl text-xs font-bold">Kaldır</button>}
+                        {(expReceipt || expReceiptUrl) && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setExpReceipt("");
+                              setExpReceiptUrl("");
+                            }}
+                            className="bg-rose-50 text-rose-600 px-3 py-2.5 rounded-xl text-xs font-bold"
+                          >
+                            Kaldır
+                          </button>
+                        )}
                       </div>
                     </div>
 
@@ -1150,7 +1228,7 @@ export default function App() {
                       onClick={handleAddExpense}
                       className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-semibold py-3.5 rounded-xl shadow flex items-center justify-center gap-2"
                     >
-                      <Plus className="w-5 h-5" /> {savingExpense ? "Kaydediliyor..." : "Harcamayı ve Fişi Kaydet"}
+                      <Plus className="w-5 h-5" /> {savingExpense ? "Kaydediliyor..." : "Harcamayı Kaydet"}
                     </button>
                   </div>
                 </div>
@@ -1169,13 +1247,7 @@ export default function App() {
                           <td className="p-3 font-mono text-xs">{exp.date}</td>
                           <td className="p-3"><span className="bg-slate-100 px-2.5 py-1 rounded text-xs">{exp.category}</span></td>
                           <td className="p-3 font-medium">{exp.title}</td>
-                          <td className="p-3 text-center">
-                            {exp.receiptImage ? (
-                              <button onClick={() => setViewingImage(exp.receiptImage)} className="bg-blue-50 text-blue-600 px-2.5 py-1 rounded text-xs font-semibold inline-flex items-center gap-1">
-                                <ImageIcon className="w-3.5 h-3.5" /> Gör
-                              </button>
-                            ) : <span className="text-slate-300">-</span>}
-                          </td>
+                          <td className="p-3 text-center">{renderReceiptAction(exp)}</td>
                           <td className="p-3 text-right font-bold text-rose-600">-{formatMoney(exp.amount)} ₺</td>
                           <td className="p-3 text-right"><button type="button" onClick={() => handleDeleteExpense(exp.id)} className="text-rose-500"><Trash2 className="w-4 h-4" /></button></td>
                         </tr>
@@ -1593,13 +1665,7 @@ export default function App() {
                           <tr key={exp.id}>
                             <td className="p-3 font-mono text-xs">{exp.date}</td>
                             <td className="p-3 font-medium">{exp.title}</td>
-                            <td className="p-3 text-center">
-                              {exp.receiptImage ? (
-                                <button onClick={() => setViewingImage(exp.receiptImage)} className="bg-blue-50 text-blue-600 px-2.5 py-1 rounded text-xs font-semibold inline-flex items-center gap-1">
-                                  <ImageIcon className="w-3.5 h-3.5" /> Fişi Gör
-                                </button>
-                              ) : <span className="text-slate-300">-</span>}
-                            </td>
+                            <td className="p-3 text-center">{renderReceiptAction(exp)}</td>
                             <td className="p-3 text-right font-bold text-rose-600">-{formatMoney(exp.amount)} ₺</td>
                           </tr>
                         ))}
