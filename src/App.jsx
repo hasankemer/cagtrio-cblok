@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, doc, setDoc, onSnapshot } from 'firebase/firestore';
 import { 
   Building2, Users, Wallet, Wrench, Shield, Key, Plus, Trash2, 
   CheckCircle2, AlertCircle, Phone, ArrowUpRight, 
-  Sparkles, RefreshCw, LogOut, FileText, Layers, DollarSign, Image as ImageIcon, X, Edit3, Eye, Activity, Bell, Printer, MessageSquarePlus, Lock
+  Sparkles, RefreshCw, LogOut, FileText, Layers, DollarSign, Image as ImageIcon, X, Edit3, Eye, Activity, Bell, Printer, MessageSquarePlus, Lock, Download, Upload
 } from 'lucide-react';
 
 const firebaseConfig = {
@@ -32,6 +32,7 @@ const INITIAL_DATA = {
   defaultMonthlyFee: 500,
   managerApartmentNo: "",
   managerHistory: [],
+  showResidentTotals: true,
   apartments: [
     { id: 1, no: "1", owner: "Ahmet Yılmaz", phone: "1234", monthlyFee: 500, passwordChanged: false },
     { id: 2, no: "2", owner: "Ayşe Demir", phone: "5678", monthlyFee: 500, passwordChanged: false },
@@ -75,6 +76,35 @@ const formatMoney = (val) => {
 };
 
 const isFourDigitNumber = (val) => /^\d{4}$/.test(String(val || "").trim());
+
+const normalizeData = (raw) => ({
+  ...INITIAL_DATA,
+  ...(raw || {}),
+  defaultMonthlyFee: raw?.defaultMonthlyFee !== undefined ? round2(raw.defaultMonthlyFee) : 500,
+  managerApartmentNo: raw?.managerApartmentNo || "",
+  managerHistory: Array.isArray(raw?.managerHistory) ? raw.managerHistory : [],
+  showResidentTotals: raw?.showResidentTotals !== undefined ? Boolean(raw.showResidentTotals) : true,
+  apartments: (raw?.apartments || []).map(a => ({
+    ...a,
+    passwordChanged: Boolean(a.passwordChanged)
+  })),
+  payments: (() => {
+    const oldPayments = raw?.payments || {};
+    const migrated = { ...oldPayments };
+    Object.entries(oldPayments).forEach(([key, value]) => {
+      if (!/^\d{4}_/.test(key) && /^.+_\d{1,2}$/.test(key)) migrated[`${new Date().getFullYear()}_${key}`] = value;
+    });
+    return migrated;
+  })(),
+  extraItems: (raw?.extraItems || []).map(item => ({ ...item, amountPerApt: round2(item.amountPerApt) })),
+  extraPayments: raw?.extraPayments || {},
+  expenses: (raw?.expenses || []).map(e => ({ ...e, amount: round2(e.amount), receiptImage: e.receiptImage || "" })),
+  cleaningLogs: raw?.cleaningLogs || [],
+  elevatorLogs: raw?.elevatorLogs || [],
+  loginLogs: Array.isArray(raw?.loginLogs) ? raw.loginLogs : [],
+  announcement: raw?.announcement !== undefined ? raw.announcement : INITIAL_DATA.announcement,
+  requests: Array.isArray(raw?.requests) ? raw.requests : []
+});
 
 export default function App() {
   const [data, setData] = useState(INITIAL_DATA);
@@ -128,35 +158,10 @@ export default function App() {
   const [newRequestText, setNewRequestText] = useState("");
   const [newRequestCat, setNewRequestCat] = useState("Arıza");
 
-  useEffect(() => {
-    const normalizeData = (raw) => ({
-      ...INITIAL_DATA,
-      ...raw,
-      defaultMonthlyFee: raw.defaultMonthlyFee !== undefined ? round2(raw.defaultMonthlyFee) : 500,
-      managerApartmentNo: raw.managerApartmentNo || "",
-      managerHistory: Array.isArray(raw.managerHistory) ? raw.managerHistory : [],
-      apartments: (raw.apartments || []).map(a => ({
-        ...a,
-        passwordChanged: Boolean(a.passwordChanged)
-      })),
-      payments: (() => {
-        const oldPayments = raw.payments || {};
-        const migrated = { ...oldPayments };
-        Object.entries(oldPayments).forEach(([key, value]) => {
-          if (!/^\d{4}_/.test(key) && /^.+_\d{1,2}$/.test(key)) migrated[`${new Date().getFullYear()}_${key}`] = value;
-        });
-        return migrated;
-      })(),
-      extraItems: (raw.extraItems || []).map(item => ({ ...item, amountPerApt: round2(item.amountPerApt) })),
-      extraPayments: raw.extraPayments || {},
-      expenses: (raw.expenses || []).map(e => ({ ...e, amount: round2(e.amount), receiptImage: e.receiptImage || "" })),
-      cleaningLogs: raw.cleaningLogs || [],
-      elevatorLogs: raw.elevatorLogs || [],
-      loginLogs: Array.isArray(raw.loginLogs) ? raw.loginLogs : [],
-      announcement: raw.announcement !== undefined ? raw.announcement : INITIAL_DATA.announcement,
-      requests: Array.isArray(raw.requests) ? raw.requests : []
-    });
+  const [backupBusy, setBackupBusy] = useState(false);
+  const backupFileInputRef = useRef(null);
 
+  useEffect(() => {
     if (!db || !isFirebaseConnected) {
       const saved = localStorage.getItem("cagtrio_c_blok_v2");
       if (saved) {
@@ -217,6 +222,80 @@ export default function App() {
     } else {
       setSuccessMsg(msg);
       setTimeout(() => setSuccessMsg(""), 4000);
+    }
+  };
+
+  const handleToggleResidentTotals = async () => {
+    const nextValue = !data.showResidentTotals;
+    await saveData({ ...data, showResidentTotals: nextValue });
+    showNotification(
+      nextValue
+        ? "Sakin ekranında toplam harcanan ve kasa bilgileri açıldı."
+        : "Sakin ekranında toplam harcanan ve kasa bilgileri gizlendi."
+    );
+  };
+
+  const handleExportBackup = () => {
+    setBackupBusy(true);
+    try {
+      const backupPayload = {
+        exportedAt: new Date().toISOString(),
+        project: "cagtrio-cblok",
+        data
+      };
+      const jsonStr = JSON.stringify(backupPayload, null, 2);
+      const blob = new Blob([jsonStr], { type: "application/json;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const dateStr = new Date().toISOString().slice(0, 10);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `cagtrio-cblok-yedek-${dateStr}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      showNotification(`Yedek indirildi: cagtrio-cblok-yedek-${dateStr}.json`);
+    } catch (err) {
+      console.error(err);
+      showNotification("Yedek alma sırasında hata oluştu.", true);
+    } finally {
+      setBackupBusy(false);
+    }
+  };
+
+  const handleImportBackup = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const confirmed = window.confirm(
+      "Seçilen yedek dosyasındaki kayıtlar mevcut verilerin üzerine yazılacak. Devam etmek istiyor musunuz?"
+    );
+    if (!confirmed) {
+      event.target.value = "";
+      return;
+    }
+
+    setBackupBusy(true);
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      const rawBackup = parsed?.data || parsed;
+      if (!rawBackup || !Array.isArray(rawBackup.apartments)) {
+        throw new Error("Geçersiz yedek formatı");
+      }
+
+      const normalized = normalizeData(rawBackup);
+      await saveData(normalized);
+      setDefaultFeeInput(String(normalized.defaultMonthlyFee));
+      setPreviousYearBalanceInput(String(normalized.previousYearBalance ?? 0));
+      setAnnouncementInput(normalized.announcement || "");
+      showNotification("Yedek başarıyla geri yüklendi ve Firebase'e kaydedildi.");
+    } catch (err) {
+      console.error(err);
+      showNotification("Yedek dosyası okunamadı veya geçersiz.", true);
+    } finally {
+      setBackupBusy(false);
+      event.target.value = "";
     }
   };
 
@@ -539,6 +618,52 @@ export default function App() {
           </div>
         ) : session.type === 'admin' ? (
           <div className="space-y-6">
+            <div className="bg-white p-4 rounded-2xl shadow-sm border flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+              <div>
+                <h2 className="text-sm font-bold text-slate-900">Yönetim Kontrolleri & Yedekleme</h2>
+                <p className="text-xs text-slate-500">
+                  Sakin ekranındaki harcama ve kasa özetini açıp kapatın veya tam JSON yedeği alın.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleToggleResidentTotals}
+                  className={`px-4 py-2 rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 border transition ${
+                    data.showResidentTotals
+                      ? 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100'
+                      : 'bg-slate-100 text-slate-700 border-slate-300 hover:bg-slate-200'
+                  }`}
+                >
+                  <Eye className="w-4 h-4" />
+                  Sakin Kasa Özeti: {data.showResidentTotals ? "Açık" : "Kapalı"}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExportBackup}
+                  disabled={backupBusy}
+                  className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white px-4 py-2 rounded-xl text-xs font-semibold inline-flex items-center gap-1.5"
+                >
+                  <Download className="w-4 h-4" /> {backupBusy ? "İşleniyor..." : "Yedek Al"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => backupFileInputRef.current?.click()}
+                  disabled={backupBusy}
+                  className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white px-4 py-2 rounded-xl text-xs font-semibold inline-flex items-center gap-1.5"
+                >
+                  <Upload className="w-4 h-4" /> Yedek Yükle
+                </button>
+                <input
+                  ref={backupFileInputRef}
+                  type="file"
+                  accept="application/json,.json"
+                  onChange={handleImportBackup}
+                  className="hidden"
+                />
+              </div>
+            </div>
+
             <div className="flex flex-wrap gap-2 bg-white p-2 rounded-2xl shadow-sm border">
               <button onClick={() => setActiveTab('dashboard')} className={`px-4 py-2.5 rounded-xl text-sm font-semibold ${activeTab === 'dashboard' ? 'bg-emerald-600 text-white' : 'text-slate-600'}`}>Özet</button>
               <button onClick={() => setActiveTab('apartments')} className={`px-4 py-2.5 rounded-xl text-sm font-semibold ${activeTab === 'apartments' ? 'bg-emerald-600 text-white' : 'text-slate-600'}`}>Daireler</button>
@@ -1014,6 +1139,26 @@ export default function App() {
 
             {activeTab === 'settings' && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="bg-white p-6 rounded-2xl border md:col-span-2 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                  <div>
+                    <h3 className="text-lg font-bold mb-1">Sakin Ekranı Kasa ve Harcama Görünürlüğü</h3>
+                    <p className="text-sm text-slate-500">
+                      Sakin panelinde “Toplam Harcanan” ve “Kasada Kalan” kutularının görünüp görünmeyeceğini belirler.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleToggleResidentTotals}
+                    className={`px-5 py-2.5 rounded-xl font-semibold text-sm ${
+                      data.showResidentTotals
+                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                        : 'bg-slate-200 hover:bg-slate-300 text-slate-800'
+                    }`}
+                  >
+                    {data.showResidentTotals ? "Şu An Açık (Gizlemek İçin Tıkla)" : "Şu An Kapalı (Açmak İçin Tıkla)"}
+                  </button>
+                </div>
+
                 <div className="bg-white p-6 rounded-2xl border md:col-span-2">
                   <h3 className="text-lg font-bold mb-2">Apartman Duyuru Panosu Yönetimi</h3>
                   <p className="text-sm text-slate-500 mb-3">Buraya yazdığınız duyuru tüm sakinlerin ana ekranında en üstte renkli duyuru olarak görünür.</p>
@@ -1224,14 +1369,18 @@ export default function App() {
                       <p className="text-[11px] text-blue-200">Toplam Ödemeniz</p>
                       <p className="text-lg font-bold">{formatMoney(residentTotalPaid)} ₺</p>
                     </div>
-                    <div className="bg-white/10 p-3 rounded-2xl text-center min-w-[110px]">
-                      <p className="text-[11px] text-blue-200">Toplam Harcanan</p>
-                      <p className="text-lg font-bold text-rose-300">{formatMoney(totalExpenses)} ₺</p>
-                    </div>
-                    <div className="bg-white/10 p-3 rounded-2xl text-center min-w-[110px]">
-                      <p className="text-[11px] text-blue-200">Kasada Kalan</p>
-                      <p className="text-lg font-bold text-emerald-300">{formatMoney(netBalance)} ₺</p>
-                    </div>
+                    {data.showResidentTotals && (
+                      <>
+                        <div className="bg-white/10 p-3 rounded-2xl text-center min-w-[110px]">
+                          <p className="text-[11px] text-blue-200">Toplam Harcanan</p>
+                          <p className="text-lg font-bold text-rose-300">{formatMoney(totalExpenses)} ₺</p>
+                        </div>
+                        <div className="bg-white/10 p-3 rounded-2xl text-center min-w-[110px]">
+                          <p className="text-[11px] text-blue-200">Kasada Kalan</p>
+                          <p className="text-lg font-bold text-emerald-300">{formatMoney(netBalance)} ₺</p>
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
 
