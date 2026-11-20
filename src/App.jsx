@@ -171,6 +171,8 @@ export default function App() {
   const [newFee, setNewFee] = useState("");
 
   const [editingApt, setEditingApt] = useState(null);
+  const [editingExpense, setEditingExpense] = useState(null);
+  const [savingEditedExpense, setSavingEditedExpense] = useState(false);
 
   const [extraTitle, setExtraTitle] = useState("");
   const [extraAmount, setExtraAmount] = useState("");
@@ -364,6 +366,53 @@ export default function App() {
     }
   };
 
+  const handleSaveEditedExpense = async () => {
+    if (!editingExpense) return;
+    const trimmedTitle = String(editingExpense.title || "").trim();
+    const numericAmount = Number(editingExpense.amount);
+
+    if (!trimmedTitle) {
+      return showNotification("Lütfen harcama açıklaması girin.", true);
+    }
+    if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+      return showNotification("Lütfen geçerli ve 0'dan büyük bir tutar girin.", true);
+    }
+
+    const rawUrl = String(editingExpense.receiptUrl || "").trim();
+    const cleanedUrl = normalizeSafeUrl(rawUrl);
+    if (rawUrl && !cleanedUrl) {
+      return showNotification("Lütfen geçerli bir fiş linki girin.", true);
+    }
+
+    setSavingEditedExpense(true);
+    try {
+      const updatedExpense = {
+        ...editingExpense,
+        title: trimmedTitle,
+        amount: round2(numericAmount),
+        date: editingExpense.date || new Date().toISOString().split('T')[0],
+        category: editingExpense.category || "Genel",
+        receiptUrl: cleanedUrl,
+        receiptImage: cleanedUrl ? "" : (editingExpense.receiptImage || "")
+      };
+
+      const currentExpenses = Array.isArray(dataRef.current?.expenses) ? dataRef.current.expenses : [];
+      const updatedData = {
+        ...dataRef.current,
+        expenses: currentExpenses.map(item => item.id === updatedExpense.id ? updatedExpense : item)
+      };
+
+      await saveData(updatedData);
+      setEditingExpense(null);
+      showNotification("Harcama kalemi güncellendi.");
+    } catch (err) {
+      console.error("Harcama güncelleme hatası:", err);
+      showNotification(err?.message || "Harcama güncellenirken hata oluştu.", true);
+    } finally {
+      setSavingEditedExpense(false);
+    }
+  };
+
   const handleDeleteExpense = async (expenseId) => {
     try {
       const currentExpenses = Array.isArray(dataRef.current?.expenses) ? dataRef.current.expenses : [];
@@ -519,6 +568,24 @@ export default function App() {
     }
   };
 
+  const handleEditExpenseImageUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file || !editingExpense) return;
+    try {
+      const compressedBase64 = await compressImageToBase64(file, 900, 0.65);
+      if (compressedBase64.length > 550000) {
+        return showNotification("Fiş görseli sıkıştırıldıktan sonra bile çok büyük. Google Drive linki kullanmanız önerilir.", true);
+      }
+      setEditingExpense({ ...editingExpense, receiptImage: compressedBase64, receiptUrl: "" });
+      showNotification("Fiş görseli güncellendi.");
+    } catch (err) {
+      console.error(err);
+      showNotification("Fiş görseli yüklenemedi.", true);
+    } finally {
+      e.target.value = "";
+    }
+  };
+
   const getPaymentKey = (year, aptNo, monthIndex) => `${year}_${aptNo}_${monthIndex}`;
 
   const isManagerForMonth = (aptNo, year, monthIndex) => {
@@ -635,6 +702,121 @@ export default function App() {
             </div>
             <div className="mt-4 pt-3 border-t flex justify-end">
               <button onClick={() => setShowAllExpensesModal(false)} className="bg-slate-900 text-white px-6 py-2 rounded-xl text-sm font-semibold">Kapat</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editingExpense && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-bold text-slate-900">Harcama Kalemini Düzenle</h3>
+              <button type="button" onClick={() => setEditingExpense(null)} className="bg-slate-100 p-2 rounded-full hover:bg-slate-200">
+                <X className="w-4 h-4 text-slate-700" />
+              </button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold uppercase mb-1">Açıklama</label>
+                <input
+                  type="text"
+                  value={editingExpense.title}
+                  onChange={(e) => setEditingExpense({ ...editingExpense, title: e.target.value })}
+                  className="w-full px-4 py-2.5 border rounded-xl"
+                />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold uppercase mb-1">Tutar (₺)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={editingExpense.amount}
+                    onChange={(e) => setEditingExpense({ ...editingExpense, amount: e.target.value })}
+                    className="w-full px-4 py-2.5 border rounded-xl font-bold text-rose-600"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold uppercase mb-1">Tarih</label>
+                  <input
+                    type="date"
+                    value={editingExpense.date}
+                    onChange={(e) => setEditingExpense({ ...editingExpense, date: e.target.value })}
+                    className="w-full px-4 py-2.5 border rounded-xl"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold uppercase mb-1">Kategori</label>
+                <select
+                  value={editingExpense.category || "Genel"}
+                  onChange={(e) => setEditingExpense({ ...editingExpense, category: e.target.value })}
+                  className="w-full px-4 py-2.5 border rounded-xl bg-white"
+                >
+                  <option value="Genel">Genel Gider</option>
+                  <option value="Elektrik">Elektrik</option>
+                  <option value="Su">Su</option>
+                  <option value="Temizlik">Temizlik</option>
+                  <option value="Asansör">Asansör</option>
+                  <option value="Demirbaş">Demirbaş</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold uppercase mb-1">Google Drive Fiş Linki</label>
+                <input
+                  type="url"
+                  placeholder="https://drive.google.com/..."
+                  value={editingExpense.receiptUrl || ""}
+                  onChange={(e) => setEditingExpense({
+                    ...editingExpense,
+                    receiptUrl: e.target.value,
+                    receiptImage: e.target.value.trim() ? "" : editingExpense.receiptImage
+                  })}
+                  className="w-full px-4 py-2.5 border rounded-xl text-sm"
+                />
+              </div>
+              <div className="p-3 bg-slate-50 rounded-xl border flex flex-wrap items-center justify-between gap-2">
+                <span className="text-xs font-semibold text-slate-600">
+                  {editingExpense.receiptUrl?.trim()
+                    ? "Drive linki aktif"
+                    : editingExpense.receiptImage
+                      ? "Yüklü fiş görseli mevcut"
+                      : "Fiş görseli yok"}
+                </span>
+                <div className="flex items-center gap-2">
+                  <label className="px-3 py-1.5 bg-white border rounded-lg text-xs font-semibold cursor-pointer">
+                    <span>Görsel Seç</span>
+                    <input type="file" accept="image/*" onChange={handleEditExpenseImageUpload} className="hidden" />
+                  </label>
+                  {(editingExpense.receiptImage || editingExpense.receiptUrl) && (
+                    <button
+                      type="button"
+                      onClick={() => setEditingExpense({ ...editingExpense, receiptImage: "", receiptUrl: "" })}
+                      className="px-3 py-1.5 bg-rose-50 text-rose-600 rounded-lg text-xs font-semibold"
+                    >
+                      Temizle
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div className="flex gap-3 mt-6">
+                <button
+                  type="button"
+                  disabled={savingEditedExpense}
+                  onClick={handleSaveEditedExpense}
+                  className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-semibold py-2.5 rounded-xl"
+                >
+                  {savingEditedExpense ? "Kaydediliyor..." : "Değişiklikleri Kaydet"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditingExpense(null)}
+                  className="flex-1 bg-slate-200 text-slate-700 font-semibold py-2.5 rounded-xl"
+                >
+                  İptal
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -1233,12 +1415,12 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className="bg-white p-6 rounded-2xl border">
+                <div className="bg-white p-6 rounded-2xl border overflow-x-auto">
                   <h3 className="text-lg font-bold mb-4">Harcama Geçmişi & Fişler</h3>
                   <table className="w-full text-left text-sm">
                     <thead>
                       <tr className="border-b bg-slate-50">
-                        <th className="p-3">Tarih</th><th className="p-3">Kategori</th><th className="p-3">Açıklama</th><th className="p-3 text-center">Fiş</th><th className="p-3 text-right">Tutar</th><th className="p-3 text-right">Sil</th>
+                        <th className="p-3">Tarih</th><th className="p-3">Kategori</th><th className="p-3">Açıklama</th><th className="p-3 text-center">Fiş</th><th className="p-3 text-right">Tutar</th><th className="p-3 text-center">Düzenle</th><th className="p-3 text-right">Sil</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y">
@@ -1249,6 +1431,15 @@ export default function App() {
                           <td className="p-3 font-medium">{exp.title}</td>
                           <td className="p-3 text-center">{renderReceiptAction(exp)}</td>
                           <td className="p-3 text-right font-bold text-rose-600">-{formatMoney(exp.amount)} ₺</td>
+                          <td className="p-3 text-center">
+                            <button
+                              type="button"
+                              onClick={() => setEditingExpense({ ...exp })}
+                              className="bg-blue-50 text-blue-600 hover:bg-blue-100 p-2 rounded-lg inline-flex items-center gap-1 text-xs font-semibold"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" /> Düzenle
+                            </button>
+                          </td>
                           <td className="p-3 text-right"><button type="button" onClick={() => handleDeleteExpense(exp.id)} className="text-rose-500"><Trash2 className="w-4 h-4" /></button></td>
                         </tr>
                       ))}
