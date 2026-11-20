@@ -1515,7 +1515,7 @@ export default function App() {
                   <div>
                     <h3 className="text-lg font-bold mb-1">Sakin Ekranı Kasa ve Harcama Görünürlüğü</h3>
                     <p className="text-sm text-slate-500">
-                      Sakin panelinde “Toplam Harcanan” ve “Kasada Kalan” kutularının görünüp görünmeyeceğini belirler.
+                      Sakin panelinde “Toplam Harcanan”, “Kasada Kalan” ve “Kategoriye Göre Harcama Dağılımı” alanlarının görünüp görünmeyeceğini belirler.
                     </p>
                   </div>
                   <button
@@ -1755,6 +1755,25 @@ export default function App() {
                     )}
                   </div>
                 </div>
+
+                {data.showResidentTotals && (
+                  <div className="bg-white p-6 rounded-2xl border">
+                    <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
+                      <Layers className="w-5 h-5 text-emerald-600" /> Kategoriye Göre Harcama Dağılımı
+                    </h3>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                      {Object.entries(expensesByCategory).map(([cat, amt]) => (
+                        <div key={cat} className="p-4 rounded-xl border bg-slate-50">
+                          <p className="text-xs text-slate-500 font-medium">{cat}</p>
+                          <p className="text-lg font-bold text-rose-600 mt-1">{formatMoney(amt)} ₺</p>
+                        </div>
+                      ))}
+                      {Object.keys(expensesByCategory).length === 0 && (
+                        <p className="text-xs text-slate-400">Henüz harcama bulunmuyor.</p>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 <div className="bg-white p-6 rounded-2xl border">
                   <h3 className="text-lg font-bold mb-3 flex items-center gap-2"><MessageSquarePlus className="w-5 h-5 text-blue-600" /> Yönetime Arıza veya Öneri Bildir</h3>
