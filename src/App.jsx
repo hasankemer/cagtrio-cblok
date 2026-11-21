@@ -132,6 +132,10 @@ const normalizeData = (raw) => ({
   apartments: Array.isArray(raw?.apartments)
     ? raw.apartments.map(a => ({
         ...a,
+        no: String(a.no || "").trim(),
+        owner: String(a.owner || "").trim(),
+        phone: String(a.phone || "").trim(),
+        monthlyFee: a.monthlyFee !== undefined ? round2(a.monthlyFee) : 500,
         passwordChanged: Boolean(a.passwordChanged)
       }))
     : [],
@@ -163,6 +167,65 @@ const normalizeData = (raw) => ({
   requests: Array.isArray(raw?.requests) ? raw.requests : []
 });
 
+const validateBeforeSave = (candidate) => {
+  if (!candidate || typeof candidate !== "object") {
+    throw new Error("Kayıt verisi doğrulanamadı.");
+  }
+  if (!String(candidate.adminPassword || "").trim()) {
+    throw new Error("Yönetici parolası boş olamaz.");
+  }
+  if (!Array.isArray(candidate.apartments)) {
+    throw new Error("Daire listesi doğrulanamadı.");
+  }
+  if (!Array.isArray(candidate.expenses)) {
+    throw new Error("Harcama listesi doğrulanamadı.");
+  }
+  if (!Number.isFinite(Number(candidate.defaultMonthlyFee)) || Number(candidate.defaultMonthlyFee) < 0) {
+    throw new Error("Varsayılan aylık aidat tutarı geçersiz.");
+  }
+  if (!Number.isFinite(Number(candidate.previousYearBalance))) {
+    throw new Error("Önceki yıldan devir bakiyesi geçersiz.");
+  }
+
+  const seenAptNos = new Set();
+  for (const apt of candidate.apartments) {
+    const no = String(apt?.no || "").trim();
+    const owner = String(apt?.owner || "").trim();
+    const phone = String(apt?.phone || "").trim();
+    if (!no || !owner) {
+      throw new Error("Tüm dairelerin numarası ve sahibi dolu olmalıdır.");
+    }
+    if (seenAptNos.has(no)) {
+      throw new Error(`Daire ${no} birden fazla kez tanımlanamaz.`);
+    }
+    seenAptNos.add(no);
+    if (!isFourDigitNumber(phone)) {
+      throw new Error(`Daire ${no} için parola 4 basamaklı bir sayı olmalıdır.`);
+    }
+    if (!Number.isFinite(Number(apt.monthlyFee)) || Number(apt.monthlyFee) < 0) {
+      throw new Error(`Daire ${no} için aylık aidat tutarı geçersiz.`);
+    }
+  }
+
+  for (const exp of candidate.expenses) {
+    if (!String(exp?.title || "").trim()) {
+      throw new Error("Açıklaması boş olan harcama kaydı tespit edildi.");
+    }
+    if (!Number.isFinite(Number(exp?.amount)) || Number(exp.amount) <= 0) {
+      throw new Error("Tutarı geçersiz olan harcama kaydı tespit edildi.");
+    }
+  }
+
+  for (const item of candidate.extraItems) {
+    if (!String(item?.title || "").trim()) {
+      throw new Error("Başlığı boş olan ekstra/demirbaş kaydı tespit edildi.");
+    }
+    if (!Number.isFinite(Number(item?.amountPerApt)) || Number(item.amountPerApt) <= 0) {
+      throw new Error("Tutarı geçersiz olan ekstra/demirbaş kaydı tespit edildi.");
+    }
+  }
+};
+
 const compressImageToBase64 = (file, maxWidth = 900, quality = 0.65) =>
   new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -191,6 +254,7 @@ export default function App() {
   const [session, setSession] = useState(null);
   const [errorMsg, setErrorMsg] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
+  const [syncLockReason, setSyncLockReason] = useState("");
 
   const [selectedAptNo, setSelectedAptNo] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
@@ -273,6 +337,7 @@ export default function App() {
 
     if (!db || !isFirebaseConnected) {
       loadFromLocalOrFallback();
+      setSyncLockReason("Firebase bağlantısı kurulamadı. Mevcut verilerin üzerine yazılmasını önlemek için kayıt işlemleri durduruldu.");
       setLoading(false);
       return;
     }
@@ -282,56 +347,69 @@ export default function App() {
       if (docSnap.exists()) {
         const normalized = normalizeData(docSnap.data());
         applyLoadedData(normalized);
+        setSyncLockReason("");
         try {
           localStorage.setItem("cagtrio_c_blok_v2", JSON.stringify(normalized));
         } catch (e) {}
       } else {
         loadFromLocalOrFallback();
-        setErrorMsg("Firestore'da cagtrio/c_blok_data kaydı bulunamadı. Mevcut yedeğinizi 'Yedek Yükle' ile geri yükleyebilirsiniz.");
+        setSyncLockReason("Firestore'da cagtrio/c_blok_data belgesi bulunamadı. Otomatik örnek veri yazımı kapatıldı ve kayıt işlemleri durduruldu. Yedeğiniz varsa 'Yedek Yükle' ile geri yükleyebilirsiniz.");
       }
       setLoading(false);
     }, (error) => {
       console.error("Firestore dinleme hatası:", error);
       loadFromLocalOrFallback();
-      setErrorMsg("Firebase veritabanına bağlanılamadı; yerel kayıtlar gösteriliyor.");
+      setSyncLockReason("Firebase verisi okunamadı (bağlantı veya yetki hatası). Verilerin üzerine yazılmasını önlemek için kayıt işlemleri durduruldu.");
       setLoading(false);
     });
 
     return () => unsubscribe();
   }, []);
 
-  const saveData = async (newData) => {
+  const saveData = async (newData, { bypassSyncLock = false } = {}) => {
+    if (!bypassSyncLock && syncLockReason) {
+      throw new Error(syncLockReason);
+    }
+    if (!db || !isFirebaseConnected) {
+      throw new Error("Firebase bağlantısı aktif değil. Kayıt işlemi durduruldu.");
+    }
+
     const normalized = normalizeData(newData);
+    validateBeforeSave(normalized);
+
     const jsonSize = new Blob([JSON.stringify(normalized)]).size;
     if (jsonSize > 950000) {
       throw new Error("Veri boyutu 1 MB sınırına yaklaştı. Fiş görsellerini küçültün veya Google Drive linki kullanın.");
     }
 
+    await setDoc(doc(db, "cagtrio", "c_blok_data"), normalized);
+
     setData(normalized);
     dataRef.current = normalized;
+    if (bypassSyncLock) {
+      setSyncLockReason("");
+    }
     try {
       localStorage.setItem("cagtrio_c_blok_v2", JSON.stringify(normalized));
     } catch (e) {}
-
-    if (db && isFirebaseConnected) {
-      await setDoc(doc(db, "cagtrio", "c_blok_data"), normalized);
-    }
   };
 
   const commitData = async (nextData, okMessage, failMessage = "Değişiklik Firebase'e kaydedilemedi.") => {
     try {
       await saveData(nextData);
       if (okMessage) showNotification(okMessage);
+      return true;
     } catch (err) {
       console.error("Kayıt hatası:", err);
       showNotification(err?.message || failMessage, true);
+      return false;
     }
   };
 
   const showNotification = (msg, isError = false) => {
     if (isError) {
       setErrorMsg(msg);
-      setTimeout(() => setErrorMsg(""), 5000);
+      setTimeout(() => setErrorMsg(""), 6000);
     } else {
       setSuccessMsg(msg);
       setTimeout(() => setSuccessMsg(""), 4000);
@@ -475,7 +553,7 @@ export default function App() {
       showNotification("Harcama kalemi silindi.");
     } catch (err) {
       console.error("Harcama silme hatası:", err);
-      showNotification("Harcama silinirken hata oluştu.", true);
+      showNotification(err?.message || "Harcama silinirken hata oluştu.", true);
     }
   };
 
@@ -489,7 +567,7 @@ export default function App() {
           : "Sakin ekranında toplam harcanan ve kasa bilgileri gizlendi."
       );
     } catch (err) {
-      showNotification("Ayar kaydedilemedi.", true);
+      showNotification(err?.message || "Ayar kaydedilemedi.", true);
     }
   };
 
@@ -538,19 +616,19 @@ export default function App() {
       const text = await file.text();
       const parsed = JSON.parse(text);
       const rawBackup = parsed?.data || parsed;
-      if (!rawBackup || !Array.isArray(rawBackup.apartments)) {
-        throw new Error("Geçersiz yedek formatı");
+      if (!rawBackup || !Array.isArray(rawBackup.apartments) || rawBackup.apartments.length === 0) {
+        throw new Error("Geçersiz veya boş yedek formatı");
       }
 
       const normalized = normalizeData(rawBackup);
-      await saveData(normalized);
+      await saveData(normalized, { bypassSyncLock: true });
       setDefaultFeeInput(String(normalized.defaultMonthlyFee));
       setPreviousYearBalanceInput(String(normalized.previousYearBalance ?? 0));
       setAnnouncementInput(normalized.announcement || "");
       showNotification("Yedek başarıyla geri yüklendi ve Firebase'e kaydedildi.");
     } catch (err) {
       console.error(err);
-      showNotification("Yedek dosyası okunamadı veya geçersiz.", true);
+      showNotification(err?.message || "Yedek dosyası okunamadı veya geçersiz.", true);
     } finally {
       setBackupBusy(false);
       event.target.value = "";
@@ -568,7 +646,7 @@ export default function App() {
     }
   };
 
-  const handleResidentLogin = (e) => {
+  const handleResidentLogin = async (e) => {
     e.preventDefault();
     const apt = data.apartments.find(a => a.no === selectedAptNo);
     if (!apt) {
@@ -576,24 +654,29 @@ export default function App() {
       return;
     }
     if (apt.phone === loginPassword.trim()) {
-      const now = new Date();
-      const timestamp = now.toLocaleString('tr-TR', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-      });
-      const newLog = {
-        id: Date.now(),
-        aptNo: apt.no,
-        owner: apt.owner,
-        timestamp
-      };
-      const updatedLogs = [newLog, ...(data.loginLogs || [])].slice(0, 500);
-      commitData({ ...data, loginLogs: updatedLogs }, `Daire ${apt.no} sayfasına hoş geldiniz.`);
       setSession({ type: 'resident', aptNo: apt.no });
       setLoginPassword("");
+
+      if (!syncLockReason && db && isFirebaseConnected) {
+        const now = new Date();
+        const timestamp = now.toLocaleString('tr-TR', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+        const newLog = {
+          id: Date.now(),
+          aptNo: apt.no,
+          owner: apt.owner,
+          timestamp
+        };
+        const updatedLogs = [newLog, ...(data.loginLogs || [])].slice(0, 500);
+        await commitData({ ...data, loginLogs: updatedLogs }, `Daire ${apt.no} sayfasına hoş geldiniz.`);
+      } else {
+        showNotification(`Daire ${apt.no} sayfasına hoş geldiniz.`);
+      }
     } else {
       showNotification("Parola hatalı!", true);
     }
@@ -850,7 +933,7 @@ export default function App() {
               <div className="flex gap-3 mt-6">
                 <button
                   type="button"
-                  disabled={savingEditedExpense}
+                  disabled={savingEditedExpense || Boolean(syncLockReason)}
                   onClick={handleSaveEditedExpense}
                   className="flex-1 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-semibold py-2.5 rounded-xl"
                 >
@@ -907,15 +990,19 @@ export default function App() {
               </div>
               <div className="flex gap-3 mt-6">
                 <button 
-                  onClick={() => {
+                  disabled={Boolean(syncLockReason)}
+                  onClick={async () => {
+                    if (!String(editingApt.owner || "").trim()) {
+                      return showNotification("Daire sahibi adı boş olamaz.", true);
+                    }
                     if (!isFourDigitNumber(editingApt.phone)) {
                       return showNotification("Parola 4 basamaklı bir sayı olmalıdır.", true);
                     }
-                    const updated = data.apartments.map(a => a.id === editingApt.id ? { ...editingApt, monthlyFee: round2(editingApt.monthlyFee) } : a);
-                    commitData({ ...data, apartments: updated }, "Daire bilgileri güncellendi.");
-                    setEditingApt(null);
+                    const updated = data.apartments.map(a => a.id === editingApt.id ? { ...editingApt, owner: editingApt.owner.trim(), monthlyFee: round2(editingApt.monthlyFee) } : a);
+                    const ok = await commitData({ ...data, apartments: updated }, "Daire bilgileri güncellendi.");
+                    if (ok) setEditingApt(null);
                   }} 
-                  className="flex-1 bg-emerald-600 text-white font-semibold py-2.5 rounded-xl"
+                  className="flex-1 bg-emerald-600 disabled:opacity-50 text-white font-semibold py-2.5 rounded-xl"
                 >
                   Kaydet
                 </button>
@@ -950,6 +1037,18 @@ export default function App() {
           )}
         </div>
       </header>
+
+      {syncLockReason && (
+        <div className="max-w-7xl mx-auto w-full px-4 mt-4">
+          <div className="bg-amber-50 border-2 border-amber-500 text-amber-950 p-4 rounded-2xl shadow-sm flex items-start gap-3">
+            <AlertCircle className="w-6 h-6 text-amber-600 shrink-0 mt-0.5" />
+            <div>
+              <h3 className="font-bold text-sm text-amber-900">Veri Koruma Uyarısı — Kayıt İşlemleri Durduruldu</h3>
+              <p className="text-xs mt-1 leading-relaxed">{syncLockReason}</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {(errorMsg || successMsg) && (
         <div className="max-w-7xl mx-auto w-full px-4 mt-4">
@@ -1012,8 +1111,9 @@ export default function App() {
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
+                  disabled={Boolean(syncLockReason)}
                   onClick={handleToggleResidentTotals}
-                  className={`px-4 py-2 rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 border transition ${
+                  className={`px-4 py-2 rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 border transition disabled:opacity-50 ${
                     data.showResidentTotals
                       ? 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100'
                       : 'bg-slate-100 text-slate-700 border-slate-300 hover:bg-slate-200'
@@ -1127,20 +1227,22 @@ export default function App() {
                           </div>
                           <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
                             <button
+                              disabled={Boolean(syncLockReason)}
                               onClick={() => {
                                 const updated = data.requests.map(r => r.id === req.id ? { ...r, resolved: !r.resolved } : r);
                                 commitData({ ...data, requests: updated }, "Talep durumu güncellendi.");
                               }}
-                              className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${req.resolved ? 'bg-emerald-600 text-white' : 'bg-amber-100 text-amber-800 hover:bg-amber-200'}`}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-semibold disabled:opacity-50 ${req.resolved ? 'bg-emerald-600 text-white' : 'bg-amber-100 text-amber-800 hover:bg-amber-200'}`}
                             >
                               {req.resolved ? 'Çözüldü ✓' : 'Çözüldü Olarak İşaretle'}
                             </button>
                             <button
+                              disabled={Boolean(syncLockReason)}
                               onClick={() => {
                                 if (!window.confirm("Bu talep silinsin mi?")) return;
                                 commitData({ ...data, requests: data.requests.filter(r => r.id !== req.id) }, "Talep silindi.");
                               }}
-                              className="text-rose-500 p-1.5 hover:bg-rose-50 rounded-lg"
+                              className="text-rose-500 p-1.5 hover:bg-rose-50 rounded-lg disabled:opacity-50"
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
@@ -1163,11 +1265,12 @@ export default function App() {
                     </div>
                     {(data.loginLogs || []).length > 0 && (
                       <button
+                        disabled={Boolean(syncLockReason)}
                         onClick={() => {
                           if (!window.confirm("Tüm ziyaret geçmişi kayıtları silinsin mi?")) return;
                           commitData({ ...data, loginLogs: [] }, "Ziyaret geçmişi temizlendi.");
                         }}
-                        className="bg-rose-50 hover:bg-rose-100 text-rose-600 px-4 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5"
+                        className="bg-rose-50 hover:bg-rose-100 disabled:opacity-50 text-rose-600 px-4 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5"
                       >
                         <Trash2 className="w-4 h-4" /> Kayıtları Sıfırla
                       </button>
@@ -1236,13 +1339,26 @@ export default function App() {
                       className="px-4 py-2.5 border rounded-xl font-mono" 
                     />
                     <input type="number" step="0.01" placeholder={`Aidat (${formatMoney(defaultFee)} ₺)`} value={newFee !== "" ? newFee : defaultFee} onChange={(e) => setNewFee(e.target.value)} className="px-4 py-2.5 border rounded-xl" />
-                    <button onClick={() => {
-                      if (!newAptNo || !newOwner || !newPhone) return showNotification("Alanları doldurun.", true);
-                      if (!isFourDigitNumber(newPhone)) return showNotification("İlk parola 4 basamaklı bir sayı olmalıdır.", true);
-                      const updated = [...data.apartments, { id: Date.now(), no: newAptNo, owner: newOwner, phone: newPhone, monthlyFee: newFee !== "" ? round2(newFee) : defaultFee, passwordChanged: false }];
-                      commitData({ ...data, apartments: updated }, "Daire eklendi.");
-                      setNewAptNo(""); setNewOwner(""); setNewPhone(""); setNewFee("");
-                    }} className="bg-emerald-600 text-white font-semibold py-2.5 rounded-xl">Kaydet</button>
+                    <button
+                      disabled={Boolean(syncLockReason)}
+                      onClick={async () => {
+                        const trimmedNo = newAptNo.trim();
+                        const trimmedOwner = newOwner.trim();
+                        if (!trimmedNo || !trimmedOwner || !newPhone) return showNotification("Alanları doldurun.", true);
+                        if (!isFourDigitNumber(newPhone)) return showNotification("İlk parola 4 basamaklı bir sayı olmalıdır.", true);
+                        if (data.apartments.some(a => String(a.no).trim() === trimmedNo)) {
+                          return showNotification(`Daire ${trimmedNo} zaten kayıtlı.`, true);
+                        }
+                        const updated = [...data.apartments, { id: Date.now(), no: trimmedNo, owner: trimmedOwner, phone: newPhone, monthlyFee: newFee !== "" ? round2(newFee) : defaultFee, passwordChanged: false }];
+                        const ok = await commitData({ ...data, apartments: updated }, "Daire eklendi.");
+                        if (ok) {
+                          setNewAptNo(""); setNewOwner(""); setNewPhone(""); setNewFee("");
+                        }
+                      }}
+                      className="bg-emerald-600 disabled:opacity-50 text-white font-semibold py-2.5 rounded-xl"
+                    >
+                      Kaydet
+                    </button>
                   </div>
                 </div>
 
@@ -1282,6 +1398,7 @@ export default function App() {
                                 ) : (
                                   <button
                                     type="button"
+                                    disabled={Boolean(syncLockReason)}
                                     aria-label={`Daire ${apt.no} - ${MONTHS[mIdx]} ${selectedYear} aidatını ${isPaid ? "ödenmedi" : "ödendi"} olarak işaretle`}
                                     onClick={(e) => {
                                       e.preventDefault();
@@ -1295,7 +1412,7 @@ export default function App() {
                                         payments: nextPayments
                                       });
                                     }}
-                                    className={`w-8 h-8 rounded text-xs font-bold ${isPaid ? 'bg-emerald-600 text-white' : 'bg-slate-200'}`}
+                                    className={`w-8 h-8 rounded text-xs font-bold disabled:opacity-50 ${isPaid ? 'bg-emerald-600 text-white' : 'bg-slate-200'}`}
                                   >
                                     {isPaid ? '✓' : '•'}
                                   </button>
@@ -1311,6 +1428,7 @@ export default function App() {
                           <td className="p-3 text-right">
                             <button
                               type="button"
+                              disabled={Boolean(syncLockReason)}
                               onClick={() => {
                                 if (!window.confirm(`Daire ${apt.no} silinsin mi? Bu daireye ait tüm yılların aylık aidat ve ekstra ödeme işaretleri de silinecek. Daireyi yeniden eklerseniz ayları yeniden işaretleyebilirsiniz.`)) return;
                                 const aptNo = String(apt.no);
@@ -1330,7 +1448,7 @@ export default function App() {
                                   extraPayments: cleanedExtraPayments
                                 }, `Daire ${apt.no} ve ona ait ödeme işaretleri silindi.`);
                               }}
-                              className="text-rose-500"
+                              className="text-rose-500 disabled:opacity-50"
                               title="Daireyi ve ödeme kayıtlarını sil"
                             ><Trash2 className="w-4 h-4" /></button>
                           </td>
@@ -1350,25 +1468,36 @@ export default function App() {
                     <input type="text" placeholder="Kalem Adı" value={extraTitle} onChange={(e) => setExtraTitle(e.target.value)} className="px-4 py-2.5 border rounded-xl" />
                     <input type="number" step="0.01" placeholder="Daire Başı Tutar" value={extraAmount} onChange={(e) => setExtraAmount(e.target.value)} className="px-4 py-2.5 border rounded-xl" />
                     <input type="date" value={extraDate} onChange={(e) => setExtraDate(e.target.value)} className="px-4 py-2.5 border rounded-xl" />
-                    <button onClick={() => {
-                      if (!extraTitle || !extraAmount) return showNotification("Alanları doldurun.", true);
-                      commitData({ ...data, extraItems: [{ id: Date.now(), title: extraTitle, amountPerApt: round2(extraAmount), date: extraDate }, ...(data.extraItems || [])] }, "Ekstra eklendi.");
-                      setExtraTitle(""); setExtraAmount("");
-                    }} className="bg-indigo-600 text-white font-semibold py-2.5 rounded-xl">Ekle</button>
+                    <button
+                      disabled={Boolean(syncLockReason)}
+                      onClick={async () => {
+                        const trimmed = extraTitle.trim();
+                        const numeric = Number(extraAmount);
+                        if (!trimmed) return showNotification("Kalem adı girin.", true);
+                        if (!Number.isFinite(numeric) || numeric <= 0) return showNotification("Geçerli bir tutar girin.", true);
+                        const ok = await commitData({ ...data, extraItems: [{ id: Date.now(), title: trimmed, amountPerApt: round2(numeric), date: extraDate }, ...(data.extraItems || [])] }, "Ekstra eklendi.");
+                        if (ok) {
+                          setExtraTitle(""); setExtraAmount("");
+                        }
+                      }}
+                      className="bg-indigo-600 disabled:opacity-50 text-white font-semibold py-2.5 rounded-xl"
+                    >
+                      Ekle
+                    </button>
                   </div>
                 </div>
                 {(data.extraItems || []).map(item => (
                   <div key={item.id} className="bg-white p-6 rounded-2xl border">
                     <div className="flex justify-between items-center mb-4 pb-2 border-b">
                       <h4 className="font-bold">{item.title} ({formatMoney(item.amountPerApt)} ₺ / Daire)</h4>
-                      <button onClick={() => commitData({ ...data, extraItems: data.extraItems.filter(i => i.id !== item.id) }, "Ekstra kalemi silindi.")} className="text-rose-600 text-xs"><Trash2 className="w-4 h-4 inline" /> Sil</button>
+                      <button disabled={Boolean(syncLockReason)} onClick={() => commitData({ ...data, extraItems: data.extraItems.filter(i => i.id !== item.id) }, "Ekstra kalemi silindi.")} className="text-rose-600 text-xs disabled:opacity-50"><Trash2 className="w-4 h-4 inline" /> Sil</button>
                     </div>
                     <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3">
                       {data.apartments.map(apt => {
                         const key = `${item.id}_${apt.no}`;
                         const isPaid = !!data.extraPayments?.[key];
                         return (
-                          <button key={apt.id} onClick={() => commitData({ ...data, extraPayments: { ...(data.extraPayments || {}), [key]: !isPaid } })} className={`p-3 rounded-xl border text-left flex justify-between items-center ${isPaid ? 'bg-emerald-50 border-emerald-300 text-emerald-900' : 'bg-slate-50'}`}>
+                          <button key={apt.id} disabled={Boolean(syncLockReason)} onClick={() => commitData({ ...data, extraPayments: { ...(data.extraPayments || {}), [key]: !isPaid } })} className={`p-3 rounded-xl border text-left flex justify-between items-center disabled:opacity-50 ${isPaid ? 'bg-emerald-50 border-emerald-300 text-emerald-900' : 'bg-slate-50'}`}>
                             <span className="font-bold text-xs">Daire {apt.no}</span>
                             <span className={`w-5 h-5 rounded flex items-center justify-center text-xs ${isPaid ? 'bg-emerald-600 text-white' : 'bg-slate-200'}`}>{isPaid ? '✓' : ''}</span>
                           </button>
@@ -1444,7 +1573,7 @@ export default function App() {
 
                     <button
                       type="button"
-                      disabled={savingExpense}
+                      disabled={savingExpense || Boolean(syncLockReason)}
                       onClick={handleAddExpense}
                       className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-semibold py-3.5 rounded-xl shadow flex items-center justify-center gap-2"
                     >
@@ -1478,7 +1607,7 @@ export default function App() {
                               <Edit3 className="w-3.5 h-3.5" /> Düzenle
                             </button>
                           </td>
-                          <td className="p-3 text-right"><button type="button" onClick={() => handleDeleteExpense(exp.id)} className="text-rose-500"><Trash2 className="w-4 h-4" /></button></td>
+                          <td className="p-3 text-right"><button type="button" disabled={Boolean(syncLockReason)} onClick={() => handleDeleteExpense(exp.id)} className="text-rose-500 disabled:opacity-50"><Trash2 className="w-4 h-4" /></button></td>
                         </tr>
                       ))}
                     </tbody>
@@ -1495,11 +1624,19 @@ export default function App() {
                     <input type="date" value={cleaningDate} onChange={(e) => setCleaningDate(e.target.value)} className="w-full px-3 py-2 bg-white border rounded" />
                     <input type="text" placeholder="Temizliği Yapan" value={cleaningPerson} onChange={(e) => setCleaningPerson(e.target.value)} className="w-full px-3 py-2 bg-white border rounded" />
                     <input type="text" placeholder="Not" value={cleaningNote} onChange={(e) => setCleaningNote(e.target.value)} className="w-full px-3 py-2 bg-white border rounded" />
-                    <button onClick={() => {
-                      if (!cleaningDate || !cleaningPerson) return showNotification("Tarih ve kişi girin.", true);
-                      commitData({ ...data, cleaningLogs: [{ id: Date.now(), date: cleaningDate, person: cleaningPerson, note: cleaningNote }, ...(data.cleaningLogs || [])] }, "Temizlik eklendi.");
-                      setCleaningPerson(""); setCleaningNote("");
-                    }} className="w-full bg-emerald-600 text-white py-2 rounded text-sm font-semibold">Temizlik Ekle</button>
+                    <button
+                      disabled={Boolean(syncLockReason)}
+                      onClick={async () => {
+                        if (!cleaningDate || !cleaningPerson.trim()) return showNotification("Tarih ve kişi girin.", true);
+                        const ok = await commitData({ ...data, cleaningLogs: [{ id: Date.now(), date: cleaningDate, person: cleaningPerson.trim(), note: cleaningNote.trim() }, ...(data.cleaningLogs || [])] }, "Temizlik eklendi.");
+                        if (ok) {
+                          setCleaningPerson(""); setCleaningNote("");
+                        }
+                      }}
+                      className="w-full bg-emerald-600 disabled:opacity-50 text-white py-2 rounded text-sm font-semibold"
+                    >
+                      Temizlik Ekle
+                    </button>
                   </div>
                   <div className="space-y-2 max-h-60 overflow-y-auto">
                     {(data.cleaningLogs || []).map(l => (
@@ -1507,7 +1644,7 @@ export default function App() {
                         <div><span className="font-semibold">{l.person}</span>{l.note && <p className="text-xs text-slate-500">{l.note}</p>}</div>
                         <div className="flex items-center gap-3">
                           <span className="font-mono text-xs bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded">{l.date}</span>
-                          <button onClick={() => commitData({ ...data, cleaningLogs: data.cleaningLogs.filter(item => item.id !== l.id) }, "Temizlik kaydı silindi.")} className="text-rose-500"><Trash2 className="w-4 h-4" /></button>
+                          <button disabled={Boolean(syncLockReason)} onClick={() => commitData({ ...data, cleaningLogs: data.cleaningLogs.filter(item => item.id !== l.id) }, "Temizlik kaydı silindi.")} className="text-rose-500 disabled:opacity-50"><Trash2 className="w-4 h-4" /></button>
                         </div>
                       </div>
                     ))}
@@ -1520,11 +1657,19 @@ export default function App() {
                     <input type="date" value={elevatorDate} onChange={(e) => setElevatorDate(e.target.value)} className="w-full px-3 py-2 bg-white border rounded" />
                     <input type="text" placeholder="Bakım Firması" value={elevatorCompany} onChange={(e) => setElevatorCompany(e.target.value)} className="w-full px-3 py-2 bg-white border rounded" />
                     <input type="text" placeholder="Not" value={elevatorNote} onChange={(e) => setElevatorNote(e.target.value)} className="w-full px-3 py-2 bg-white border rounded" />
-                    <button onClick={() => {
-                      if (!elevatorDate || !elevatorCompany) return showNotification("Tarih ve firma girin.", true);
-                      commitData({ ...data, elevatorLogs: [{ id: Date.now(), date: elevatorDate, company: elevatorCompany, note: elevatorNote }, ...(data.elevatorLogs || [])] }, "Asansör bakımı eklendi.");
-                      setElevatorCompany(""); setElevatorNote("");
-                    }} className="w-full bg-blue-600 text-white py-2 rounded text-sm font-semibold">Asansör Bakımı Ekle</button>
+                    <button
+                      disabled={Boolean(syncLockReason)}
+                      onClick={async () => {
+                        if (!elevatorDate || !elevatorCompany.trim()) return showNotification("Tarih ve firma girin.", true);
+                        const ok = await commitData({ ...data, elevatorLogs: [{ id: Date.now(), date: elevatorDate, company: elevatorCompany.trim(), note: elevatorNote.trim() }, ...(data.elevatorLogs || [])] }, "Asansör bakımı eklendi.");
+                        if (ok) {
+                          setElevatorCompany(""); setElevatorNote("");
+                        }
+                      }}
+                      className="w-full bg-blue-600 disabled:opacity-50 text-white py-2 rounded text-sm font-semibold"
+                    >
+                      Asansör Bakımı Ekle
+                    </button>
                   </div>
                   <div className="space-y-2 max-h-60 overflow-y-auto">
                     {(data.elevatorLogs || []).map(l => (
@@ -1532,7 +1677,7 @@ export default function App() {
                         <div><span className="font-semibold">{l.company}</span>{l.note && <p className="text-xs text-slate-500">{l.note}</p>}</div>
                         <div className="flex items-center gap-3">
                           <span className="font-mono text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded">{l.date}</span>
-                          <button onClick={() => commitData({ ...data, elevatorLogs: data.elevatorLogs.filter(item => item.id !== l.id) }, "Asansör kaydı silindi.")} className="text-rose-500"><Trash2 className="w-4 h-4" /></button>
+                          <button disabled={Boolean(syncLockReason)} onClick={() => commitData({ ...data, elevatorLogs: data.elevatorLogs.filter(item => item.id !== l.id) }, "Asansör kaydı silindi.")} className="text-rose-500 disabled:opacity-50"><Trash2 className="w-4 h-4" /></button>
                         </div>
                       </div>
                     ))}
@@ -1552,8 +1697,9 @@ export default function App() {
                   </div>
                   <button
                     type="button"
+                    disabled={Boolean(syncLockReason)}
                     onClick={handleToggleResidentTotals}
-                    className={`px-5 py-2.5 rounded-xl font-semibold text-sm ${
+                    className={`px-5 py-2.5 rounded-xl font-semibold text-sm disabled:opacity-50 ${
                       data.showResidentTotals
                         ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
                         : 'bg-slate-200 hover:bg-slate-300 text-slate-800'
@@ -1567,9 +1713,15 @@ export default function App() {
                   <h3 className="text-lg font-bold mb-2">Apartman Duyuru Panosu Yönetimi</h3>
                   <p className="text-sm text-slate-500 mb-3">Buraya yazdığınız duyuru tüm sakinlerin ana ekranında en üstte renkli duyuru olarak görünür.</p>
                   <textarea rows="3" value={announcementInput} onChange={(e) => setAnnouncementInput(e.target.value)} className="w-full p-4 border rounded-xl text-sm" placeholder="Duyuru metnini yazın..." />
-                  <button onClick={() => {
-                    commitData({ ...data, announcement: announcementInput }, "Duyuru güncellendi.");
-                  }} className="mt-3 bg-emerald-600 text-white px-6 py-2.5 rounded-xl font-semibold text-sm">Duyuruyu Yayınla</button>
+                  <button
+                    disabled={Boolean(syncLockReason)}
+                    onClick={() => {
+                      commitData({ ...data, announcement: announcementInput }, "Duyuru güncellendi.");
+                    }}
+                    className="mt-3 bg-emerald-600 disabled:opacity-50 text-white px-6 py-2.5 rounded-xl font-semibold text-sm"
+                  >
+                    Duyuruyu Yayınla
+                  </button>
                 </div>
 
                 <div className="bg-white p-6 rounded-2xl border">
@@ -1579,11 +1731,19 @@ export default function App() {
                     <input type="number" step="0.01" value={previousYearBalanceInput} onChange={(e) => setPreviousYearBalanceInput(e.target.value)} className="flex-1 min-w-0 px-4 py-2.5 border rounded-xl font-bold text-lg" placeholder="Devir tutarı" />
                     <span className="font-semibold text-slate-500">₺</span>
                   </div>
-                  <button type="button" onClick={() => {
-                    const amount = round2(previousYearBalanceInput);
-                    if (!Number.isFinite(amount)) return showNotification("Geçerli bir devir tutarı girin.", true);
-                    commitData({ ...data, previousYearBalance: amount }, "Devir tutarı kaydedildi.");
-                  }} className="mt-3 w-full bg-emerald-600 text-white py-2.5 rounded-xl font-semibold">Devir Tutarını Kaydet</button>
+                  <button
+                    type="button"
+                    disabled={Boolean(syncLockReason)}
+                    onClick={() => {
+                      if (String(previousYearBalanceInput).trim() === "") return showNotification("Lütfen devir tutarı girin.", true);
+                      const amount = round2(previousYearBalanceInput);
+                      if (!Number.isFinite(amount)) return showNotification("Geçerli bir devir tutarı girin.", true);
+                      commitData({ ...data, previousYearBalance: amount }, "Devir tutarı kaydedildi.");
+                    }}
+                    className="mt-3 w-full bg-emerald-600 disabled:opacity-50 text-white py-2.5 rounded-xl font-semibold"
+                  >
+                    Devir Tutarını Kaydet
+                  </button>
                 </div>
                 <div className="bg-white p-6 rounded-2xl border flex flex-col justify-between">
                   <div>
@@ -1591,14 +1751,29 @@ export default function App() {
                     <input type="number" step="0.01" value={defaultFeeInput} onChange={(e) => setDefaultFeeInput(e.target.value)} className="w-full px-4 py-2.5 border rounded-xl font-bold text-lg text-emerald-700" />
                   </div>
                   <div className="mt-6 flex gap-3">
-                    <button onClick={() => {
-                      const val = round2(defaultFeeInput);
-                      commitData({ ...data, defaultMonthlyFee: val }, "Kaydedildi.");
-                    }} className="flex-1 bg-emerald-600 text-white py-2.5 rounded-xl font-semibold">Kaydet</button>
-                    <button onClick={() => {
-                      const val = round2(defaultFeeInput);
-                      commitData({ ...data, defaultMonthlyFee: val, apartments: data.apartments.map(a => ({ ...a, monthlyFee: val })) }, "Tüm dairelere uygulandı.");
-                    }} className="flex-1 bg-blue-600 text-white py-2.5 rounded-xl font-semibold">Tümüne Uygula</button>
+                    <button
+                      disabled={Boolean(syncLockReason)}
+                      onClick={() => {
+                        const val = Number(defaultFeeInput);
+                        if (!Number.isFinite(val) || val <= 0) return showNotification("Geçerli bir aidat tutarı girin.", true);
+                        commitData({ ...data, defaultMonthlyFee: round2(val) }, "Kaydedildi.");
+                      }}
+                      className="flex-1 bg-emerald-600 disabled:opacity-50 text-white py-2.5 rounded-xl font-semibold"
+                    >
+                      Kaydet
+                    </button>
+                    <button
+                      disabled={Boolean(syncLockReason)}
+                      onClick={() => {
+                        const val = Number(defaultFeeInput);
+                        if (!Number.isFinite(val) || val <= 0) return showNotification("Geçerli bir aidat tutarı girin.", true);
+                        const rounded = round2(val);
+                        commitData({ ...data, defaultMonthlyFee: rounded, apartments: data.apartments.map(a => ({ ...a, monthlyFee: rounded })) }, "Tüm dairelere uygulandı.");
+                      }}
+                      className="flex-1 bg-blue-600 disabled:opacity-50 text-white py-2.5 rounded-xl font-semibold"
+                    >
+                      Tümüne Uygula
+                    </button>
                   </div>
                 </div>
 
@@ -1612,27 +1787,33 @@ export default function App() {
                     </select>
                     <label className="block text-xs font-semibold text-slate-600">Göreve başlama ayı (ayın 1'i esas alınır)</label>
                     <input type="date" value={managerEffectiveDate} onChange={(e) => setManagerEffectiveDate(e.target.value)} className="w-full px-4 py-2.5 border rounded-xl" />
-                    <button onClick={() => {
-                      const select = document.getElementById("manager-apartment-select");
-                      const nextApartmentNo = select ? select.value : "";
-                      const effectiveDate = managerEffectiveDate;
-                      if (!effectiveDate || !effectiveDate.endsWith("-01")) return showNotification("Başlangıç tarihini ayın 1'i olarak seçin.", true);
-                      const history = [...(data.managerHistory || [])];
-                      const openIndex = history.findIndex(item => !item.endDate);
-                      if (openIndex >= 0) {
-                        const previous = history[openIndex];
-                        if (effectiveDate <= previous.startDate) return showNotification("Yeni görev başlangıcı önceki başlangıç tarihinden sonra olmalı.", true);
-                        const end = new Date(`${effectiveDate}T00:00:00`);
-                        end.setDate(end.getDate() - 1);
-                        history[openIndex] = { ...previous, endDate: end.toISOString().slice(0, 10) };
-                      } else if (!history.length && data.managerApartmentNo) {
-                        const end = new Date(`${effectiveDate}T00:00:00`);
-                        end.setDate(end.getDate() - 1);
-                        history.push({ apartmentNo: data.managerApartmentNo, startDate: `${currentYear}-01-01`, endDate: end.toISOString().slice(0, 10) });
-                      }
-                      if (nextApartmentNo) history.push({ apartmentNo: nextApartmentNo, startDate: effectiveDate, endDate: "" });
-                      commitData({ ...data, managerApartmentNo: nextApartmentNo, managerHistory: history }, nextApartmentNo ? `Daire ${nextApartmentNo} için yönetici görevi kaydedildi.` : "Yönetici görevi sonlandırıldı.");
-                    }} className="w-full bg-emerald-600 text-white py-2.5 rounded-xl font-semibold">Görevlendirmeyi Kaydet</button>
+                    <button
+                      disabled={Boolean(syncLockReason)}
+                      onClick={() => {
+                        const select = document.getElementById("manager-apartment-select");
+                        const nextApartmentNo = select ? select.value : "";
+                        const effectiveDate = managerEffectiveDate;
+                        if (!effectiveDate || !effectiveDate.endsWith("-01")) return showNotification("Başlangıç tarihini ayın 1'i olarak seçin.", true);
+                        const history = [...(data.managerHistory || [])];
+                        const openIndex = history.findIndex(item => !item.endDate);
+                        if (openIndex >= 0) {
+                          const previous = history[openIndex];
+                          if (effectiveDate <= previous.startDate) return showNotification("Yeni görev başlangıcı önceki başlangıç tarihinden sonra olmalı.", true);
+                          const end = new Date(`${effectiveDate}T00:00:00`);
+                          end.setDate(end.getDate() - 1);
+                          history[openIndex] = { ...previous, endDate: end.toISOString().slice(0, 10) };
+                        } else if (!history.length && data.managerApartmentNo) {
+                          const end = new Date(`${effectiveDate}T00:00:00`);
+                          end.setDate(end.getDate() - 1);
+                          history.push({ apartmentNo: data.managerApartmentNo, startDate: `${currentYear}-01-01`, endDate: end.toISOString().slice(0, 10) });
+                        }
+                        if (nextApartmentNo) history.push({ apartmentNo: nextApartmentNo, startDate: effectiveDate, endDate: "" });
+                        commitData({ ...data, managerApartmentNo: nextApartmentNo, managerHistory: history }, nextApartmentNo ? `Daire ${nextApartmentNo} için yönetici görevi kaydedildi.` : "Yönetici görevi sonlandırıldı.");
+                      }}
+                      className="w-full bg-emerald-600 disabled:opacity-50 text-white py-2.5 rounded-xl font-semibold"
+                    >
+                      Görevlendirmeyi Kaydet
+                    </button>
                   </div>
                   <div className="mt-5 border-t pt-4">
                     <h4 className="font-bold text-sm mb-2">Görev geçmişi</h4>
@@ -1646,6 +1827,7 @@ export default function App() {
                               <span className="text-xs text-slate-500 text-right">{item.startDate} – {item.endDate || "Devam ediyor"}</span>
                               <button
                                 type="button"
+                                disabled={Boolean(syncLockReason)}
                                 title="Görev kaydını sil"
                                 aria-label={`Daire ${item.apartmentNo} görev kaydını sil`}
                                 onClick={() => {
@@ -1658,7 +1840,7 @@ export default function App() {
                                     managerApartmentNo: removesActiveManager ? "" : data.managerApartmentNo
                                   }, "Yönetici görev kaydı silindi.");
                                 }}
-                                className="p-2 rounded-lg text-red-600 hover:bg-red-50"
+                                className="p-2 rounded-lg text-red-600 hover:bg-red-50 disabled:opacity-50"
                               ><Trash2 size={16} /></button>
                             </div>
                           </div>;
@@ -1673,11 +1855,18 @@ export default function App() {
                     <h3 className="text-lg font-bold mb-2">Yönetici Parolası</h3>
                     <input type="password" placeholder="Yeni Parola" value={newAdminPass} onChange={(e) => setNewAdminPass(e.target.value)} className="w-full px-4 py-2.5 border rounded-xl font-mono" />
                   </div>
-                  <button onClick={() => {
-                    if (!newAdminPass) return showNotification("Parola girin.", true);
-                    commitData({ ...data, adminPassword: newAdminPass }, "Parola güncellendi.");
-                    setNewAdminPass("");
-                  }} className="mt-6 w-full bg-slate-800 text-white py-2.5 rounded-xl font-semibold">Parolayı Güncelle</button>
+                  <button
+                    disabled={Boolean(syncLockReason)}
+                    onClick={async () => {
+                      const trimmedPass = newAdminPass.trim();
+                      if (!trimmedPass) return showNotification("Parola girin.", true);
+                      const ok = await commitData({ ...data, adminPassword: trimmedPass }, "Parola güncellendi.");
+                      if (ok) setNewAdminPass("");
+                    }}
+                    className="mt-6 w-full bg-slate-800 disabled:opacity-50 text-white py-2.5 rounded-xl font-semibold"
+                  >
+                    Parolayı Güncelle
+                  </button>
                 </div>
               </div>
             )}
@@ -1722,19 +1911,20 @@ export default function App() {
                             className="flex-1 px-4 py-2 bg-white border border-rose-300 rounded-xl font-mono text-sm"
                           />
                           <button
-                            onClick={() => {
+                            disabled={Boolean(syncLockReason)}
+                            onClick={async () => {
                               if (!isFourDigitNumber(residentNewPassword)) {
                                 return showNotification("Lütfen 4 basamaklı bir sayı girin.", true);
                               }
-                              commitData({
+                              const ok = await commitData({
                                 ...data,
                                 apartments: data.apartments.map(a =>
                                   a.no === currentApt.no ? { ...a, phone: residentNewPassword, passwordChanged: true } : a
                                 )
                               }, "Yeni parolanız başarıyla kaydedildi.");
-                              setResidentNewPassword("");
+                              if (ok) setResidentNewPassword("");
                             }}
-                            className="bg-rose-600 hover:bg-rose-700 text-white font-semibold px-5 py-2 rounded-xl text-sm"
+                            className="bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white font-semibold px-5 py-2 rounded-xl text-sm"
                           >
                             Parolayı Kaydet
                           </button>
@@ -1809,20 +1999,26 @@ export default function App() {
                       </select>
                     </div>
                     <textarea rows="2" value={newRequestText} onChange={(e) => setNewRequestText(e.target.value)} placeholder="Bildirmek istediğiniz arıza veya öneriyi yazın..." className="w-full p-3 border rounded-xl text-sm bg-slate-50" />
-                    <button onClick={() => {
-                      if (!newRequestText.trim()) return showNotification("Lütfen bir açıklama yazın.", true);
-                      const newReq = {
-                        id: Date.now(),
-                        aptNo: currentApt.no,
-                        owner: currentApt.owner,
-                        category: newRequestCat,
-                        text: newRequestText,
-                        date: new Date().toLocaleDateString('tr-TR'),
-                        resolved: false
-                      };
-                      commitData({ ...data, requests: [newReq, ...(data.requests || [])] }, "Talebiniz yöneticiye iletildi.");
-                      setNewRequestText("");
-                    }} className="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-2 rounded-xl text-sm">Bildirimi Gönder</button>
+                    <button
+                      disabled={Boolean(syncLockReason)}
+                      onClick={async () => {
+                        if (!newRequestText.trim()) return showNotification("Lütfen bir açıklama yazın.", true);
+                        const newReq = {
+                          id: Date.now(),
+                          aptNo: currentApt.no,
+                          owner: currentApt.owner,
+                          category: newRequestCat,
+                          text: newRequestText.trim(),
+                          date: new Date().toLocaleDateString('tr-TR'),
+                          resolved: false
+                        };
+                        const ok = await commitData({ ...data, requests: [newReq, ...(data.requests || [])] }, "Talebiniz yöneticiye iletildi.");
+                        if (ok) setNewRequestText("");
+                      }}
+                      className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold px-6 py-2 rounded-xl text-sm"
+                    >
+                      Bildirimi Gönder
+                    </button>
                   </div>
                 </div>
 
@@ -1964,14 +2160,20 @@ export default function App() {
                       onChange={(e) => setResidentNewPassword(e.target.value.replace(/\D/g, '').slice(0, 4))} 
                       className="w-full px-4 py-2.5 border rounded-xl font-mono" 
                     />
-                    <button onClick={() => {
-                      if (!isFourDigitNumber(residentNewPassword)) return showNotification("Lütfen 4 basamaklı bir sayı girin.", true);
-                      commitData({ 
-                        ...data, 
-                        apartments: data.apartments.map(a => a.no === currentApt.no ? { ...a, phone: residentNewPassword, passwordChanged: true } : a) 
-                      }, "Parolanız güncellendi.");
-                      setResidentNewPassword("");
-                    }} className="bg-blue-600 text-white font-semibold px-6 py-2.5 rounded-xl text-sm">Parolayı Güncelle</button>
+                    <button
+                      disabled={Boolean(syncLockReason)}
+                      onClick={async () => {
+                        if (!isFourDigitNumber(residentNewPassword)) return showNotification("Lütfen 4 basamaklı bir sayı girin.", true);
+                        const ok = await commitData({ 
+                          ...data, 
+                          apartments: data.apartments.map(a => a.no === currentApt.no ? { ...a, phone: residentNewPassword, passwordChanged: true } : a) 
+                        }, "Parolanız güncellendi.");
+                        if (ok) setResidentNewPassword("");
+                      }}
+                      className="bg-blue-600 disabled:opacity-50 text-white font-semibold px-6 py-2.5 rounded-xl text-sm"
+                    >
+                      Parolayı Güncelle
+                    </button>
                   </div>
                 </div>
               </div>
