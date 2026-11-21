@@ -27,7 +27,7 @@ try {
   console.warn("Firebase bağlantı hatası:", e);
 }
 
-const INITIAL_DATA = {
+const DEFAULT_SAMPLE_DATA = {
   adminPassword: "admin",
   defaultMonthlyFee: 500,
   managerApartmentNo: "",
@@ -52,6 +52,25 @@ const INITIAL_DATA = {
   elevatorLogs: [],
   loginLogs: [],
   announcement: "Apartman sakinlerimizin dikkatine: Yıllık genel kurul toplantımız önümüzdeki hafta sonu yapılacaktır.",
+  requests: []
+};
+
+const EMPTY_DATA = {
+  adminPassword: "admin",
+  defaultMonthlyFee: 500,
+  managerApartmentNo: "",
+  managerHistory: [],
+  showResidentTotals: true,
+  apartments: [],
+  previousYearBalance: 0,
+  payments: {},
+  extraItems: [],
+  extraPayments: {},
+  expenses: [],
+  cleaningLogs: [],
+  elevatorLogs: [],
+  loginLogs: [],
+  announcement: "",
   requests: []
 };
 
@@ -103,16 +122,20 @@ const normalizeSafeUrl = (rawUrl) => {
 };
 
 const normalizeData = (raw) => ({
-  ...INITIAL_DATA,
+  ...EMPTY_DATA,
   ...(raw || {}),
+  adminPassword: raw?.adminPassword || "admin",
   defaultMonthlyFee: raw?.defaultMonthlyFee !== undefined ? round2(raw.defaultMonthlyFee) : 500,
   managerApartmentNo: raw?.managerApartmentNo || "",
   managerHistory: Array.isArray(raw?.managerHistory) ? raw.managerHistory : [],
   showResidentTotals: raw?.showResidentTotals !== undefined ? Boolean(raw.showResidentTotals) : true,
-  apartments: (raw?.apartments || []).map(a => ({
-    ...a,
-    passwordChanged: Boolean(a.passwordChanged)
-  })),
+  apartments: Array.isArray(raw?.apartments)
+    ? raw.apartments.map(a => ({
+        ...a,
+        passwordChanged: Boolean(a.passwordChanged)
+      }))
+    : [],
+  previousYearBalance: raw?.previousYearBalance !== undefined ? round2(raw.previousYearBalance) : 0,
   payments: (() => {
     const oldPayments = raw?.payments || {};
     const migrated = { ...oldPayments };
@@ -121,7 +144,9 @@ const normalizeData = (raw) => ({
     });
     return migrated;
   })(),
-  extraItems: (raw?.extraItems || []).map(item => ({ ...item, amountPerApt: round2(item.amountPerApt) })),
+  extraItems: Array.isArray(raw?.extraItems)
+    ? raw.extraItems.map(item => ({ ...item, amountPerApt: round2(item.amountPerApt) }))
+    : [],
   extraPayments: raw?.extraPayments || {},
   expenses: Array.isArray(raw?.expenses)
     ? raw.expenses.map(e => ({
@@ -131,10 +156,10 @@ const normalizeData = (raw) => ({
         receiptUrl: normalizeSafeUrl(e.receiptUrl || "")
       }))
     : [],
-  cleaningLogs: raw?.cleaningLogs || [],
-  elevatorLogs: raw?.elevatorLogs || [],
+  cleaningLogs: Array.isArray(raw?.cleaningLogs) ? raw.cleaningLogs : [],
+  elevatorLogs: Array.isArray(raw?.elevatorLogs) ? raw.elevatorLogs : [],
   loginLogs: Array.isArray(raw?.loginLogs) ? raw.loginLogs : [],
-  announcement: raw?.announcement !== undefined ? raw.announcement : INITIAL_DATA.announcement,
+  announcement: raw?.announcement !== undefined ? raw.announcement : "",
   requests: Array.isArray(raw?.requests) ? raw.requests : []
 });
 
@@ -161,7 +186,7 @@ const compressImageToBase64 = (file, maxWidth = 900, quality = 0.65) =>
   });
 
 export default function App() {
-  const [data, setData] = useState(INITIAL_DATA);
+  const [data, setData] = useState(DEFAULT_SAMPLE_DATA);
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState(null);
   const [errorMsg, setErrorMsg] = useState("");
@@ -209,7 +234,7 @@ export default function App() {
 
   const [newAdminPass, setNewAdminPass] = useState("");
   const [defaultFeeInput, setDefaultFeeInput] = useState("");
-  const [previousYearBalanceInput, setPreviousYearBalanceInput] = useState(String(INITIAL_DATA.previousYearBalance));
+  const [previousYearBalanceInput, setPreviousYearBalanceInput] = useState(String(DEFAULT_SAMPLE_DATA.previousYearBalance));
   const [residentNewPassword, setResidentNewPassword] = useState("");
 
   const [announcementInput, setAnnouncementInput] = useState("");
@@ -218,29 +243,36 @@ export default function App() {
 
   const [backupBusy, setBackupBusy] = useState(false);
   const backupFileInputRef = useRef(null);
-  const dataRef = useRef(INITIAL_DATA);
+  const dataRef = useRef(DEFAULT_SAMPLE_DATA);
 
   useEffect(() => {
     dataRef.current = data;
   }, [data]);
 
   useEffect(() => {
-    if (!db || !isFirebaseConnected) {
+    const applyLoadedData = (loaded) => {
+      setData(loaded);
+      dataRef.current = loaded;
+      setDefaultFeeInput(String(loaded.defaultMonthlyFee));
+      setPreviousYearBalanceInput(String(loaded.previousYearBalance ?? 0));
+      setAnnouncementInput(loaded.announcement || "");
+    };
+
+    const loadFromLocalOrFallback = () => {
       const saved = localStorage.getItem("cagtrio_c_blok_v2");
       if (saved) {
         try {
-          const parsed = normalizeData(JSON.parse(saved));
-          setData(parsed);
-          dataRef.current = parsed;
-          setDefaultFeeInput(String(parsed.defaultMonthlyFee));
-          setPreviousYearBalanceInput(String(parsed.previousYearBalance ?? 0));
-          setAnnouncementInput(parsed.announcement || "");
-        } catch (e) {}
-      } else {
-        setDefaultFeeInput(String(INITIAL_DATA.defaultMonthlyFee));
-        setPreviousYearBalanceInput(String(INITIAL_DATA.previousYearBalance));
-        setAnnouncementInput(INITIAL_DATA.announcement);
+          applyLoadedData(normalizeData(JSON.parse(saved)));
+          return;
+        } catch (e) {
+          console.warn("Yerel kayıt okunamadı:", e);
+        }
       }
+      applyLoadedData(DEFAULT_SAMPLE_DATA);
+    };
+
+    if (!db || !isFirebaseConnected) {
+      loadFromLocalOrFallback();
       setLoading(false);
       return;
     }
@@ -249,22 +281,19 @@ export default function App() {
     const unsubscribe = onSnapshot(docRef, (docSnap) => {
       if (docSnap.exists()) {
         const normalized = normalizeData(docSnap.data());
-        setData(normalized);
-        dataRef.current = normalized;
-        setDefaultFeeInput(String(normalized.defaultMonthlyFee));
-        setPreviousYearBalanceInput(String(normalized.previousYearBalance ?? 0));
-        setAnnouncementInput(normalized.announcement || "");
+        applyLoadedData(normalized);
+        try {
+          localStorage.setItem("cagtrio_c_blok_v2", JSON.stringify(normalized));
+        } catch (e) {}
       } else {
-        setDoc(docRef, INITIAL_DATA);
-        setData(INITIAL_DATA);
-        dataRef.current = INITIAL_DATA;
-        setDefaultFeeInput(String(INITIAL_DATA.defaultMonthlyFee));
-        setPreviousYearBalanceInput(String(INITIAL_DATA.previousYearBalance));
-        setAnnouncementInput(INITIAL_DATA.announcement);
+        loadFromLocalOrFallback();
+        setErrorMsg("Firestore'da cagtrio/c_blok_data kaydı bulunamadı. Mevcut yedeğinizi 'Yedek Yükle' ile geri yükleyebilirsiniz.");
       }
       setLoading(false);
     }, (error) => {
       console.error("Firestore dinleme hatası:", error);
+      loadFromLocalOrFallback();
+      setErrorMsg("Firebase veritabanına bağlanılamadı; yerel kayıtlar gösteriliyor.");
       setLoading(false);
     });
 
@@ -280,10 +309,22 @@ export default function App() {
 
     setData(normalized);
     dataRef.current = normalized;
-    localStorage.setItem("cagtrio_c_blok_v2", JSON.stringify(normalized));
+    try {
+      localStorage.setItem("cagtrio_c_blok_v2", JSON.stringify(normalized));
+    } catch (e) {}
 
     if (db && isFirebaseConnected) {
       await setDoc(doc(db, "cagtrio", "c_blok_data"), normalized);
+    }
+  };
+
+  const commitData = async (nextData, okMessage, failMessage = "Değişiklik Firebase'e kaydedilemedi.") => {
+    try {
+      await saveData(nextData);
+      if (okMessage) showNotification(okMessage);
+    } catch (err) {
+      console.error("Kayıt hatası:", err);
+      showNotification(err?.message || failMessage, true);
     }
   };
 
@@ -550,10 +591,9 @@ export default function App() {
         timestamp
       };
       const updatedLogs = [newLog, ...(data.loginLogs || [])].slice(0, 500);
-      saveData({ ...data, loginLogs: updatedLogs });
+      commitData({ ...data, loginLogs: updatedLogs }, `Daire ${apt.no} sayfasına hoş geldiniz.`);
       setSession({ type: 'resident', aptNo: apt.no });
       setLoginPassword("");
-      showNotification(`Daire ${apt.no} sayfasına hoş geldiniz.`);
     } else {
       showNotification("Parola hatalı!", true);
     }
@@ -872,9 +912,8 @@ export default function App() {
                       return showNotification("Parola 4 basamaklı bir sayı olmalıdır.", true);
                     }
                     const updated = data.apartments.map(a => a.id === editingApt.id ? { ...editingApt, monthlyFee: round2(editingApt.monthlyFee) } : a);
-                    saveData({ ...data, apartments: updated });
+                    commitData({ ...data, apartments: updated }, "Daire bilgileri güncellendi.");
                     setEditingApt(null);
-                    showNotification("Daire bilgileri güncellendi.");
                   }} 
                   className="flex-1 bg-emerald-600 text-white font-semibold py-2.5 rounded-xl"
                 >
@@ -1090,7 +1129,7 @@ export default function App() {
                             <button
                               onClick={() => {
                                 const updated = data.requests.map(r => r.id === req.id ? { ...r, resolved: !r.resolved } : r);
-                                saveData({ ...data, requests: updated });
+                                commitData({ ...data, requests: updated }, "Talep durumu güncellendi.");
                               }}
                               className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${req.resolved ? 'bg-emerald-600 text-white' : 'bg-amber-100 text-amber-800 hover:bg-amber-200'}`}
                             >
@@ -1099,8 +1138,7 @@ export default function App() {
                             <button
                               onClick={() => {
                                 if (!window.confirm("Bu talep silinsin mi?")) return;
-                                saveData({ ...data, requests: data.requests.filter(r => r.id !== req.id) });
-                                showNotification("Talep silindi.");
+                                commitData({ ...data, requests: data.requests.filter(r => r.id !== req.id) }, "Talep silindi.");
                               }}
                               className="text-rose-500 p-1.5 hover:bg-rose-50 rounded-lg"
                             >
@@ -1127,8 +1165,7 @@ export default function App() {
                       <button
                         onClick={() => {
                           if (!window.confirm("Tüm ziyaret geçmişi kayıtları silinsin mi?")) return;
-                          saveData({ ...data, loginLogs: [] });
-                          showNotification("Ziyaret geçmişi temizlendi.");
+                          commitData({ ...data, loginLogs: [] }, "Ziyaret geçmişi temizlendi.");
                         }}
                         className="bg-rose-50 hover:bg-rose-100 text-rose-600 px-4 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5"
                       >
@@ -1203,9 +1240,8 @@ export default function App() {
                       if (!newAptNo || !newOwner || !newPhone) return showNotification("Alanları doldurun.", true);
                       if (!isFourDigitNumber(newPhone)) return showNotification("İlk parola 4 basamaklı bir sayı olmalıdır.", true);
                       const updated = [...data.apartments, { id: Date.now(), no: newAptNo, owner: newOwner, phone: newPhone, monthlyFee: newFee !== "" ? round2(newFee) : defaultFee, passwordChanged: false }];
-                      saveData({ ...data, apartments: updated });
+                      commitData({ ...data, apartments: updated }, "Daire eklendi.");
                       setNewAptNo(""); setNewOwner(""); setNewPhone(""); setNewFee("");
-                      showNotification("Daire eklendi.");
                     }} className="bg-emerald-600 text-white font-semibold py-2.5 rounded-xl">Kaydet</button>
                   </div>
                 </div>
@@ -1254,7 +1290,7 @@ export default function App() {
                                         ...(data.payments || {}),
                                         [key]: !isPaid
                                       };
-                                      saveData({
+                                      commitData({
                                         ...data,
                                         payments: nextPayments
                                       });
@@ -1287,13 +1323,12 @@ export default function App() {
                                 const cleanedExtraPayments = Object.fromEntries(
                                   Object.entries(data.extraPayments || {}).filter(([paymentKey]) => !String(paymentKey).endsWith(`_${aptNo}`))
                                 );
-                                saveData({
+                                commitData({
                                   ...data,
                                   apartments: data.apartments.filter(a => a.id !== apt.id),
                                   payments: cleanedPayments,
                                   extraPayments: cleanedExtraPayments
-                                });
-                                showNotification(`Daire ${apt.no} ve ona ait ödeme işaretleri silindi.`);
+                                }, `Daire ${apt.no} ve ona ait ödeme işaretleri silindi.`);
                               }}
                               className="text-rose-500"
                               title="Daireyi ve ödeme kayıtlarını sil"
@@ -1317,9 +1352,8 @@ export default function App() {
                     <input type="date" value={extraDate} onChange={(e) => setExtraDate(e.target.value)} className="px-4 py-2.5 border rounded-xl" />
                     <button onClick={() => {
                       if (!extraTitle || !extraAmount) return showNotification("Alanları doldurun.", true);
-                      saveData({ ...data, extraItems: [{ id: Date.now(), title: extraTitle, amountPerApt: round2(extraAmount), date: extraDate }, ...(data.extraItems || [])] });
+                      commitData({ ...data, extraItems: [{ id: Date.now(), title: extraTitle, amountPerApt: round2(extraAmount), date: extraDate }, ...(data.extraItems || [])] }, "Ekstra eklendi.");
                       setExtraTitle(""); setExtraAmount("");
-                      showNotification("Ekstra eklendi.");
                     }} className="bg-indigo-600 text-white font-semibold py-2.5 rounded-xl">Ekle</button>
                   </div>
                 </div>
@@ -1327,14 +1361,14 @@ export default function App() {
                   <div key={item.id} className="bg-white p-6 rounded-2xl border">
                     <div className="flex justify-between items-center mb-4 pb-2 border-b">
                       <h4 className="font-bold">{item.title} ({formatMoney(item.amountPerApt)} ₺ / Daire)</h4>
-                      <button onClick={() => saveData({ ...data, extraItems: data.extraItems.filter(i => i.id !== item.id) })} className="text-rose-600 text-xs"><Trash2 className="w-4 h-4 inline" /> Sil</button>
+                      <button onClick={() => commitData({ ...data, extraItems: data.extraItems.filter(i => i.id !== item.id) }, "Ekstra kalemi silindi.")} className="text-rose-600 text-xs"><Trash2 className="w-4 h-4 inline" /> Sil</button>
                     </div>
                     <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-3">
                       {data.apartments.map(apt => {
                         const key = `${item.id}_${apt.no}`;
                         const isPaid = !!data.extraPayments?.[key];
                         return (
-                          <button key={apt.id} onClick={() => saveData({ ...data, extraPayments: { ...(data.extraPayments || {}), [key]: !isPaid } })} className={`p-3 rounded-xl border text-left flex justify-between items-center ${isPaid ? 'bg-emerald-50 border-emerald-300 text-emerald-900' : 'bg-slate-50'}`}>
+                          <button key={apt.id} onClick={() => commitData({ ...data, extraPayments: { ...(data.extraPayments || {}), [key]: !isPaid } })} className={`p-3 rounded-xl border text-left flex justify-between items-center ${isPaid ? 'bg-emerald-50 border-emerald-300 text-emerald-900' : 'bg-slate-50'}`}>
                             <span className="font-bold text-xs">Daire {apt.no}</span>
                             <span className={`w-5 h-5 rounded flex items-center justify-center text-xs ${isPaid ? 'bg-emerald-600 text-white' : 'bg-slate-200'}`}>{isPaid ? '✓' : ''}</span>
                           </button>
@@ -1463,9 +1497,8 @@ export default function App() {
                     <input type="text" placeholder="Not" value={cleaningNote} onChange={(e) => setCleaningNote(e.target.value)} className="w-full px-3 py-2 bg-white border rounded" />
                     <button onClick={() => {
                       if (!cleaningDate || !cleaningPerson) return showNotification("Tarih ve kişi girin.", true);
-                      saveData({ ...data, cleaningLogs: [{ id: Date.now(), date: cleaningDate, person: cleaningPerson, note: cleaningNote }, ...(data.cleaningLogs || [])] });
+                      commitData({ ...data, cleaningLogs: [{ id: Date.now(), date: cleaningDate, person: cleaningPerson, note: cleaningNote }, ...(data.cleaningLogs || [])] }, "Temizlik eklendi.");
                       setCleaningPerson(""); setCleaningNote("");
-                      showNotification("Temizlik eklendi.");
                     }} className="w-full bg-emerald-600 text-white py-2 rounded text-sm font-semibold">Temizlik Ekle</button>
                   </div>
                   <div className="space-y-2 max-h-60 overflow-y-auto">
@@ -1474,7 +1507,7 @@ export default function App() {
                         <div><span className="font-semibold">{l.person}</span>{l.note && <p className="text-xs text-slate-500">{l.note}</p>}</div>
                         <div className="flex items-center gap-3">
                           <span className="font-mono text-xs bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded">{l.date}</span>
-                          <button onClick={() => saveData({ ...data, cleaningLogs: data.cleaningLogs.filter(item => item.id !== l.id) })} className="text-rose-500"><Trash2 className="w-4 h-4" /></button>
+                          <button onClick={() => commitData({ ...data, cleaningLogs: data.cleaningLogs.filter(item => item.id !== l.id) }, "Temizlik kaydı silindi.")} className="text-rose-500"><Trash2 className="w-4 h-4" /></button>
                         </div>
                       </div>
                     ))}
@@ -1489,9 +1522,8 @@ export default function App() {
                     <input type="text" placeholder="Not" value={elevatorNote} onChange={(e) => setElevatorNote(e.target.value)} className="w-full px-3 py-2 bg-white border rounded" />
                     <button onClick={() => {
                       if (!elevatorDate || !elevatorCompany) return showNotification("Tarih ve firma girin.", true);
-                      saveData({ ...data, elevatorLogs: [{ id: Date.now(), date: elevatorDate, company: elevatorCompany, note: elevatorNote }, ...(data.elevatorLogs || [])] });
+                      commitData({ ...data, elevatorLogs: [{ id: Date.now(), date: elevatorDate, company: elevatorCompany, note: elevatorNote }, ...(data.elevatorLogs || [])] }, "Asansör bakımı eklendi.");
                       setElevatorCompany(""); setElevatorNote("");
-                      showNotification("Asansör bakımı eklendi.");
                     }} className="w-full bg-blue-600 text-white py-2 rounded text-sm font-semibold">Asansör Bakımı Ekle</button>
                   </div>
                   <div className="space-y-2 max-h-60 overflow-y-auto">
@@ -1500,7 +1532,7 @@ export default function App() {
                         <div><span className="font-semibold">{l.company}</span>{l.note && <p className="text-xs text-slate-500">{l.note}</p>}</div>
                         <div className="flex items-center gap-3">
                           <span className="font-mono text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded">{l.date}</span>
-                          <button onClick={() => saveData({ ...data, elevatorLogs: data.elevatorLogs.filter(item => item.id !== l.id) })} className="text-rose-500"><Trash2 className="w-4 h-4" /></button>
+                          <button onClick={() => commitData({ ...data, elevatorLogs: data.elevatorLogs.filter(item => item.id !== l.id) }, "Asansör kaydı silindi.")} className="text-rose-500"><Trash2 className="w-4 h-4" /></button>
                         </div>
                       </div>
                     ))}
@@ -1536,8 +1568,7 @@ export default function App() {
                   <p className="text-sm text-slate-500 mb-3">Buraya yazdığınız duyuru tüm sakinlerin ana ekranında en üstte renkli duyuru olarak görünür.</p>
                   <textarea rows="3" value={announcementInput} onChange={(e) => setAnnouncementInput(e.target.value)} className="w-full p-4 border rounded-xl text-sm" placeholder="Duyuru metnini yazın..." />
                   <button onClick={() => {
-                    saveData({ ...data, announcement: announcementInput });
-                    showNotification("Duyuru güncellendi.");
+                    commitData({ ...data, announcement: announcementInput }, "Duyuru güncellendi.");
                   }} className="mt-3 bg-emerald-600 text-white px-6 py-2.5 rounded-xl font-semibold text-sm">Duyuruyu Yayınla</button>
                 </div>
 
@@ -1551,8 +1582,7 @@ export default function App() {
                   <button type="button" onClick={() => {
                     const amount = round2(previousYearBalanceInput);
                     if (!Number.isFinite(amount)) return showNotification("Geçerli bir devir tutarı girin.", true);
-                    saveData({ ...data, previousYearBalance: amount });
-                    showNotification("Devir tutarı kaydedildi.");
+                    commitData({ ...data, previousYearBalance: amount }, "Devir tutarı kaydedildi.");
                   }} className="mt-3 w-full bg-emerald-600 text-white py-2.5 rounded-xl font-semibold">Devir Tutarını Kaydet</button>
                 </div>
                 <div className="bg-white p-6 rounded-2xl border flex flex-col justify-between">
@@ -1563,13 +1593,11 @@ export default function App() {
                   <div className="mt-6 flex gap-3">
                     <button onClick={() => {
                       const val = round2(defaultFeeInput);
-                      saveData({ ...data, defaultMonthlyFee: val });
-                      showNotification("Kaydedildi.");
+                      commitData({ ...data, defaultMonthlyFee: val }, "Kaydedildi.");
                     }} className="flex-1 bg-emerald-600 text-white py-2.5 rounded-xl font-semibold">Kaydet</button>
                     <button onClick={() => {
                       const val = round2(defaultFeeInput);
-                      saveData({ ...data, defaultMonthlyFee: val, apartments: data.apartments.map(a => ({ ...a, monthlyFee: val })) });
-                      showNotification("Tüm dairelere uygulandı.");
+                      commitData({ ...data, defaultMonthlyFee: val, apartments: data.apartments.map(a => ({ ...a, monthlyFee: val })) }, "Tüm dairelere uygulandı.");
                     }} className="flex-1 bg-blue-600 text-white py-2.5 rounded-xl font-semibold">Tümüne Uygula</button>
                   </div>
                 </div>
@@ -1603,8 +1631,7 @@ export default function App() {
                         history.push({ apartmentNo: data.managerApartmentNo, startDate: `${currentYear}-01-01`, endDate: end.toISOString().slice(0, 10) });
                       }
                       if (nextApartmentNo) history.push({ apartmentNo: nextApartmentNo, startDate: effectiveDate, endDate: "" });
-                      saveData({ ...data, managerApartmentNo: nextApartmentNo, managerHistory: history });
-                      showNotification(nextApartmentNo ? `Daire ${nextApartmentNo} için yönetici görevi kaydedildi.` : "Yönetici görevi sonlandırıldı.");
+                      commitData({ ...data, managerApartmentNo: nextApartmentNo, managerHistory: history }, nextApartmentNo ? `Daire ${nextApartmentNo} için yönetici görevi kaydedildi.` : "Yönetici görevi sonlandırıldı.");
                     }} className="w-full bg-emerald-600 text-white py-2.5 rounded-xl font-semibold">Görevlendirmeyi Kaydet</button>
                   </div>
                   <div className="mt-5 border-t pt-4">
@@ -1625,12 +1652,11 @@ export default function App() {
                                   if (!window.confirm(`Daire ${item.apartmentNo} için ${item.startDate} tarihli yönetici görev kaydı silinsin mi? Bu kayda bağlı geçmiş aidat muafiyeti hesabı da değişebilir.`)) return;
                                   const updatedHistory = (data.managerHistory || []).filter((_, historyIndex) => historyIndex !== (data.managerHistory || []).indexOf(item));
                                   const removesActiveManager = !item.endDate && String(data.managerApartmentNo || "") === String(item.apartmentNo);
-                                  saveData({
+                                  commitData({
                                     ...data,
                                     managerHistory: updatedHistory,
                                     managerApartmentNo: removesActiveManager ? "" : data.managerApartmentNo
-                                  });
-                                  showNotification("Yönetici görev kaydı silindi.");
+                                  }, "Yönetici görev kaydı silindi.");
                                 }}
                                 className="p-2 rounded-lg text-red-600 hover:bg-red-50"
                               ><Trash2 size={16} /></button>
@@ -1649,9 +1675,8 @@ export default function App() {
                   </div>
                   <button onClick={() => {
                     if (!newAdminPass) return showNotification("Parola girin.", true);
-                    saveData({ ...data, adminPassword: newAdminPass });
+                    commitData({ ...data, adminPassword: newAdminPass }, "Parola güncellendi.");
                     setNewAdminPass("");
-                    showNotification("Parola güncellendi.");
                   }} className="mt-6 w-full bg-slate-800 text-white py-2.5 rounded-xl font-semibold">Parolayı Güncelle</button>
                 </div>
               </div>
@@ -1701,14 +1726,13 @@ export default function App() {
                               if (!isFourDigitNumber(residentNewPassword)) {
                                 return showNotification("Lütfen 4 basamaklı bir sayı girin.", true);
                               }
-                              saveData({
+                              commitData({
                                 ...data,
                                 apartments: data.apartments.map(a =>
                                   a.no === currentApt.no ? { ...a, phone: residentNewPassword, passwordChanged: true } : a
                                 )
-                              });
+                              }, "Yeni parolanız başarıyla kaydedildi.");
                               setResidentNewPassword("");
-                              showNotification("Yeni parolanız başarıyla kaydedildi.");
                             }}
                             className="bg-rose-600 hover:bg-rose-700 text-white font-semibold px-5 py-2 rounded-xl text-sm"
                           >
@@ -1796,9 +1820,8 @@ export default function App() {
                         date: new Date().toLocaleDateString('tr-TR'),
                         resolved: false
                       };
-                      saveData({ ...data, requests: [newReq, ...(data.requests || [])] });
+                      commitData({ ...data, requests: [newReq, ...(data.requests || [])] }, "Talebiniz yöneticiye iletildi.");
                       setNewRequestText("");
-                      showNotification("Talebiniz yöneticiye iletildi.");
                     }} className="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-2 rounded-xl text-sm">Bildirimi Gönder</button>
                   </div>
                 </div>
@@ -1943,12 +1966,11 @@ export default function App() {
                     />
                     <button onClick={() => {
                       if (!isFourDigitNumber(residentNewPassword)) return showNotification("Lütfen 4 basamaklı bir sayı girin.", true);
-                      saveData({ 
+                      commitData({ 
                         ...data, 
                         apartments: data.apartments.map(a => a.no === currentApt.no ? { ...a, phone: residentNewPassword, passwordChanged: true } : a) 
-                      });
+                      }, "Parolanız güncellendi.");
                       setResidentNewPassword("");
-                      showNotification("Parolanız güncellendi.");
                     }} className="bg-blue-600 text-white font-semibold px-6 py-2.5 rounded-xl text-sm">Parolayı Güncelle</button>
                   </div>
                 </div>
